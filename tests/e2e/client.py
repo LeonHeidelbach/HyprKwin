@@ -10,8 +10,9 @@ from PySide6.QtWidgets import QApplication, QDialog, QMenu, QWidget
 
 
 class Canvas(QWidget):
-    def __init__(self, title, color=None, menu=False):
+    def __init__(self, title, color=None, menu=False, lag=0):
         super().__init__()
+        self.lag = lag
         self.color = QColor(color) if color else QColor.fromHsvF(random.random(), 0.5, 0.8)
         self.setWindowTitle(title)
         self.menu = None
@@ -27,6 +28,10 @@ class Canvas(QWidget):
             self.menu.popup(event.globalPos())
 
     def paintEvent(self, _):
+        if self.lag:
+            # A slow app: it answers each new size this much later.
+            import time
+            time.sleep(self.lag / 1000)
         p = QPainter(self)
         p.fillRect(self.rect(), self.color)
         p.setPen(Qt.black)
@@ -49,13 +54,14 @@ def main():
     ap.add_argument("--activate-on", help="ask to be activated when this file appears (like a relaunched single-instance app)")
     ap.add_argument("--tool", action="store_true", help="a frameless tool window, the way launchers such as Albert open")
     ap.add_argument("--move-to", help="X,Y: move itself there a moment after opening, as Steam does (X11 only)")
+    ap.add_argument("--lag", type=int, default=0, help="ms each repaint takes (an app slow to take a new size)")
     ap.add_argument("--move-times", type=int, default=1, help="how many times to repeat --move-to, 400 ms apart")
     args = ap.parse_args()
 
     QGuiApplication.setDesktopFileName(args.app_id)
     app = QApplication(sys.argv[:1])
     w, h = (int(v) for v in args.size.split("x"))
-    win = Canvas(args.title, args.color, menu=args.menu)
+    win = Canvas(args.title, args.color, menu=args.menu, lag=args.lag)
     win.resize(w, h)
     if args.fixed:
         win.setFixedSize(QSize(w, h))

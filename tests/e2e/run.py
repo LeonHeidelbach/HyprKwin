@@ -2036,6 +2036,44 @@ def mouse_resize(sb):
     eq(b[0] + b[2], 1910, "B still reaches the outer gap")
 
 
+@test
+def mouse_resize_leaves_slow_apps_in_their_tiles(sb):
+    """A slow app beside an edge being dragged back and forth answers its
+    resizes late. Asked back to the size it already had, KWin gives it that
+    at once, and a late answer to an earlier step then left it overlapping
+    its neighbour until something else asked again (a change of focus, say).
+    Once the button is up, every window is in its tile."""
+    sb.spawn("A", extra=["--lag", "150"])
+    sb.spawn("B")
+    # Settings reloads re-tile everything, which would hide the fault: wait
+    # for the one KWin's own start causes.
+    try:
+        sb.wait_for(lambda s: s["configReloads"] >= 2, "the start-up settings reload", timeout=12)
+    except AssertionError:
+        pass
+    sb.settle(0.5)
+    reloads = sb.state()["configReloads"]
+    eq(sb.geometry("A"), LEFT, "A starts on the left")
+    fi = sb.input()
+    fi.move_to(1100, 540)
+    fi.key("meta", True)
+    fi.sync()
+    time.sleep(0.05)
+    fi.button(BTN_RIGHT, True)
+    time.sleep(0.05)
+    for x in (1150, 1200, 1250, 1200, 1150, 1100):   # out and back to where it started
+        fi.move_to(x, 540)
+        time.sleep(0.03)
+    fi.button(BTN_RIGHT, False)
+    fi.key("meta", False)
+    fi.sync()
+    sb.settle(1.0)
+    s = sb.state()
+    eq(s["configReloads"], reloads, "no settings reload came to the rescue")
+    eq(sb.geometry("A", s), LEFT, "A is back in its tile, not where an earlier step wanted it")
+    eq(sb.geometry("B", s), RIGHT, "B too")
+
+
 @test(config={"FocusFollowsMouse": "true"})
 def focus_follows_mouse(sb):
     sb.spawn("A")

@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Windows beside an edge dragged with the mouse stay in their tiles.** A
+  Meta+right-drag (or an edge drag) asks the windows beside it for a new size
+  at every step, and an app slow to answer could still be answering an
+  earlier step after the drag had moved on, or come back to where it began:
+  it was left at that earlier size, overlapping its neighbour, until
+  something else asked it again (a change of focus, say). Such late answers
+  are now recognised and the window is asked once more, and once a drag ends
+  every window on its workspace that is not in its tile is asked again.
+
 ## 1.2.0
 
 *HyprKwin animations 1.2.0 (changed in this release).*

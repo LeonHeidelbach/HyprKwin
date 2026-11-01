@@ -13,6 +13,31 @@ var SPECIAL = "special";
 function specialSpace(name) { return SPECIAL + ":" + name; }
 function isSpecialSpace(space) { return String(space).indexOf(SPECIAL + ":") === 0; }
 
+// How long the geometries asked of a window are remembered, and how many.
+var SENT_MS = 5000, SENT_MAX = 64;
+
+// Whether a tiled window's new geometry is a late answer to something asked
+// of it earlier, rather than where it was last put: a Wayland app takes a new
+// size only when it answers the request (a configure), and one that is slow
+// to answer while a drag asks it for size after size can still be answering
+// an old request after a newer one has been met. KWin meets a request at
+// once, with no configure, when the size asked for is the one the app already
+// has; the old request answered after that then puts the window back where
+// an earlier step of the drag wanted it, and nothing asks again. `sent` is
+// [{rect, at}] of what was asked, oldest first; `placed` the last of it.
+function isLateAnswer(sent, placed, geometry, now) {
+    if (!placed || !geometry || !sent) return false;
+    var near = function (a, b) {
+        return Math.abs(a.x - b.x) <= 1 && Math.abs(a.y - b.y) <= 1 &&
+            Math.abs(a.width - b.width) <= 1 && Math.abs(a.height - b.height) <= 1;
+    };
+    if (near(geometry, placed)) return false;
+    for (var i = 0; i < sent.length; i++) {
+        if (now - sent[i].at <= SENT_MS && near(sent[i].rect, geometry)) return true;
+    }
+    return false;
+}
+
 function createDriver(env) {
     var ws = env.workspace;
     var E = env.engine;
@@ -1267,10 +1292,40 @@ function createDriver(env) {
             if (!Object.keys(releasing).length) playQueued();
         }
         scheduleDecorations();
-        if (syncing || drag) return;
+        if (syncing) return;
+        // Even mid-drag: the windows beside the one being dragged are asked
+        // for a new size at every step, and answer late.
+        if (isTiled(st) && !(drag && drag.st === st) && lateAnswer(st)) return;
+        if (drag) return;
         var w = st.w;
         if (!isTiled(st) && !w.fullScreen && !isMaximized(w) && !w.minimized) st.floatGeom = copyRect(w.frameGeometry);
         if (isTiled(st)) snapBack(st);
+    }
+
+    // What has been asked of a window lately (see isLateAnswer).
+    function noteSent(st, r) {
+        var now = Date.now();
+        var sent = (st.sent || []).filter(function (e) { return now - e.at <= SENT_MS; });
+        sent.push({ rect: copyRect(r), at: now });
+        if (sent.length > SENT_MAX) sent.splice(0, sent.length - SENT_MAX);
+        st.sent = sent;
+    }
+
+    // A tiled window answered an old request late (see isLateAnswer) and
+    // has left where it was last put: ask again. An app that keeps landing on
+    // an old size is answering with sizes of its own, not late; after a few
+    // tries in a row it is left be, as one that refuses a size always is.
+    function lateAnswer(st) {
+        var w = st.w;
+        if (w.fullScreen || isMaximized(w) || w.minimized || w.move || w.resize) return false;
+        var now = Date.now();
+        if (!isLateAnswer(st.sent, st.placed, copyRect(w.frameGeometry), now)) return false;
+        if (!st.reasks || now - st.reasks.since > 2000) st.reasks = { since: now, count: 0 };
+        if (++st.reasks.count > 3) return false;
+        log("late answer from", w.caption, "- asking again for its tile");
+        st.placed = null;
+        schedule();
+        return true;
     }
 
     // A tiled window the app moved by itself (Steam re-centres its Settings
@@ -1302,6 +1357,9 @@ function createDriver(env) {
 
     function onDragStep(st, g) {
         if (!drag || drag.st !== st) return;
+        // What KWin asked of the dragged window counts as asked: its late
+        // answers, after the drag, are not it moving itself.
+        noteSent(st, g);
         if (drag.mode === "resize" && isTiled(st)) {
             engine.resizeByRects(st.id, drag.last, g);
             drag.last = copyRect(g);
@@ -1315,6 +1373,11 @@ function createDriver(env) {
         if (!d || d.st !== st) { schedule(); return; }
         var w = st.w;
         log("drag end", w.caption, d.mode, JSON.stringify(ws.cursorPos));
+        // Once the apps have caught up with the drag, everything on its
+        // workspace should be in its tile; anything that is not is asked once
+        // more (an answer to an old request can come in after the last one,
+        // and is not always seen as one).
+        if (env.after) env.after(400, function () { settleAfterDrag(engine.spaceOf(st.id)); });
         if (d.mode === "move" && isTiled(st) && cfg.dragToRetile) {
             var pos = ws.cursorPos;
             // In the stage layout, a window sharing the stage dragged onto
@@ -1343,6 +1406,20 @@ function createDriver(env) {
         }
         st.placed = null;
         relayout();
+    }
+
+    function settleAfterDrag(space) {
+        if (stopped || drag || !space) return;
+        var again = false;
+        engine.windows(space).forEach(function (id) {
+            var st = tracked[id], w = st ? st.w : null;
+            if (!st || !st.placed || w.minimized || w.fullScreen || isMaximized(w)) return;
+            if (sameRect(copyRect(w.frameGeometry), st.placed, 1)) return;
+            log("after the drag", w.caption, "is not in its tile - asking again");
+            st.placed = null;
+            again = true;
+        });
+        if (again) relayout();
     }
 
     // Make a tiled window's Plasma desktop match the space the engine put it in.
@@ -1429,6 +1506,7 @@ function createDriver(env) {
         st.hold = null;
         st.placed = r;
         if (!shown) st.placedHidden = true;
+        noteSent(st, r);
         if (!sameRect(w.frameGeometry, r)) {
             if (holdShrinks && slideGrowers) slideGrowers[st.id] = true;
             w.frameGeometry = env.rect(r.x, r.y, r.width, r.height);

@@ -142,6 +142,27 @@ Deno.test("interactive resize moves the shared edge", () => {
     assertEquals(l.windows.a.width, 1000);
 });
 
+Deno.test("an edge dragged out and back, a step at a time, only moves its own splits and ends where it began", () => {
+    const e = eng();
+    for (const id of ["a", "b", "c", "d"]) { e.add(id, S); e.focused(id); }   // a | (b / (c | d))
+    const l0 = e.layout(S);
+    const before = JSON.stringify(e.dump(S));
+    // A corner drag of c's top-left corner: its top and left edges move.
+    let last = l0.windows.c;
+    const steps = [[30, 20], [60, 40], [90, 10], [60, -20], [30, 0], [0, 0]];
+    for (const [dx, dy] of steps) {
+        const next = { x: l0.windows.c.x + dx, y: l0.windows.c.y + dy,
+                       width: l0.windows.c.width - dx, height: l0.windows.c.height - dy };
+        e.resizeByRects("c", last, next);
+        last = next;
+        const d = e.dump(S);
+        assertEquals(d.b.b.ratio, 0.5, "c | d is not c's to move by its top or left edge");
+        e.layout(S);
+    }
+    assertEquals(JSON.stringify(e.dump(S)), before, "back where it began");
+    assertEquals(e.layout(S).windows, l0.windows);
+});
+
 Deno.test("swap exchanges positions, including across spaces", () => {
     const e = eng();
     e.add("a", S); e.focused("a"); e.add("b", S);
