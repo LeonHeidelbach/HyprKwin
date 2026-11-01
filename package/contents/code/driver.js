@@ -3564,6 +3564,10 @@ function createDriver(env) {
             if (tracked[id]) syncDesktop(tracked[id]);
             relayout();
         },
+        rotateClockwise: function () { treeAction("Rotate", function (id) { return engine.rotate(id, 90); }); },
+        rotateCounterClockwise: function () { treeAction("Rotate", function (id) { return engine.rotate(id, 270); }); },
+        flipHorizontal: function () { treeAction("Flip", function (id) { return engine.flip(id, "horizontal"); }); },
+        flipVertical: function () { treeAction("Flip", function (id) { return engine.flip(id, "vertical"); }); },
     };
     for (var r = 1; r <= 9; r++) {
         (function (n) {

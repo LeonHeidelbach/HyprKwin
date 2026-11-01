@@ -176,6 +176,7 @@ Deno.test("the actions after bspwm are all there, and unbound", () => {
     for (let i = 1; i <= 9; i++) names.push("preselectRatio" + i);
     names.push("moveToPreselection", "toggleMarked", "moveMarkedToPreselection");
     names.push("balance", "equalize");
+    names.push("rotateClockwise", "rotateCounterClockwise", "flipHorizontal", "flipVertical");
     for (const a of names) {
         assert(byAction[a], a + " is registered");
         assertEquals(byAction[a].name, "HyprKwin " + a);

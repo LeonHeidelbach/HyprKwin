@@ -341,3 +341,54 @@ Deno.test("equalize: the parent split and everything in it back to the default r
     assertEquals(e.equalize("nobody"), false);
 });
 
+// ---- rotate, flip ---------------------------------------------------------------
+
+Deno.test("rotate: a quarter turn clockwise, as bspwm's rotate_tree", () => {
+    const e = eng();
+    open(e, ["a", "b"]);                     // a | b
+    e.rotate("b", 90);
+    assertEquals(e.dump(S), { dir: "v", ratio: 0.5, a: "a", b: "b" }, "a on top");
+    e.rotate("b", 90);
+    assertEquals(e.dump(S), { dir: "h", ratio: 0.5, a: "b", b: "a" }, "then on the right");
+    e.rotate("b", 90);
+    e.rotate("b", 90);
+    assertEquals(e.dump(S), { dir: "h", ratio: 0.5, a: "a", b: "b" }, "round again");
+});
+
+Deno.test("rotate: anticlockwise, half round, and every split below the parent", () => {
+    const e = eng();
+    open(e, ["a", "b", "c"]);                // a | (b / c)
+    e.layout(S);
+    e.moveDivider("a", 192, 0);              // root ratio 0.6
+    e.rotate("b", -90);                      // only b / c turns
+    assertEquals(e.dump(S), { dir: "h", ratio: 0.6, a: "a", b: { dir: "h", ratio: 0.5, a: "b", b: "c" } });
+    e.focused("a");
+    e.rotate("a", 270);                      // the whole tree
+    assertEquals(e.dump(S), { dir: "v", ratio: 0.4, a: { dir: "v", ratio: 0.5, a: "c", b: "b" }, b: "a" });
+    e.rotate("a", 180);
+    assertEquals(e.dump(S), { dir: "v", ratio: 0.6, a: "a", b: { dir: "v", ratio: 0.5, a: "b", b: "c" } });
+});
+
+Deno.test("rotate: the new directions hold even when splits follow the window's shape", () => {
+    const e = eng({ preserveSplit: false });
+    open(e, ["a", "b"]);
+    e.rotate("a", 90);
+    e.layout(S);
+    assertEquals(e.dump(S).dir, "v");
+    assertEquals(e.rotate("a", 45), false, "quarter turns only");
+    e.remove("b");
+    assertEquals(e.rotate("a", 90), false, "nothing to turn");
+});
+
+Deno.test("flip: horizontal swaps top and bottom, vertical left and right", () => {
+    const e = eng();
+    open(e, ["a", "b", "c"]);                // a | (b / c)
+    e.flip("a", "horizontal");
+    assertEquals(e.dump(S), { dir: "h", ratio: 0.5, a: "a", b: { dir: "v", ratio: 0.5, a: "c", b: "b" } });
+    e.flip("a", "vertical");
+    assertEquals(e.dump(S), { dir: "h", ratio: 0.5, a: { dir: "v", ratio: 0.5, a: "c", b: "b" }, b: "a" });
+    e.flip("b", "vertical");                 // just c / b: nothing side by side in it
+    assertEquals(e.dump(S).a, { dir: "v", ratio: 0.5, a: "c", b: "b" });
+    assertEquals(e.flip("b", "sideways"), false);
+});
+

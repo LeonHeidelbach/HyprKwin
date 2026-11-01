@@ -4200,6 +4200,25 @@ def balance_and_equalize(sb):
     eq(abs(c[2] - d[2]) <= 5, True, "C and D share their split evenly (but for the gap at the edge): %r %r" % (c, d))
     eq(sb.geometry("A", s)[2] < 600, True, "the rest stays balanced")
 
+
+@test
+def rotate_and_flip(sb):
+    three(sb)                                # A | (B / C), C focused
+    sb.invoke("rotateClockwise")             # B / C turns: C left of B
+    s = sb.state()
+    eq((sb.geometry("C", s)[0] < sb.geometry("B", s)[0], sb.geometry("B", s)[1]), (True, 10), "side by side, C first")
+    sb.invoke("flipVertical")
+    s = sb.state()
+    eq(sb.geometry("B", s)[0] < sb.geometry("C", s)[0], True, "flipped back left to right")
+    sb.invoke("focusLeft")                   # B
+    sb.invoke("focusLeft")                   # A: the whole tree
+    sb.invoke("rotateCounterClockwise")
+    s = sb.state()
+    eq(sb.geometry("A", s)[1] > sb.geometry("B", s)[1], True, "A below the others")
+    sb.invoke("flipHorizontal")
+    s = sb.state()
+    eq(sb.geometry("A", s)[1], 10, "and back on top")
+
 def main():
     words = [w for w in sys.argv[1:] if not w.startswith("-")]
     selected = [t for t in TESTS if not words or any(w in t.__name__ for w in words)]

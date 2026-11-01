@@ -18,6 +18,7 @@
   the focused window, or the newest marked one, moves into the newest
   preselection on the workspace. Marked windows have a border of their own
   colour.
+- **Rotate and flip** the split around the window (bspwm's `-R` and `-F`).
 
 ### Fixed
 

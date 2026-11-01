@@ -41,6 +41,7 @@ Alacritty, Dolphin, Gwenview and `hyprkwinctl`.*
   - preselect where the next window goes, its area shown until it arrives
   - move windows into preselections, and mark them
   - balance the tree, or reset part of it
+  - rotate and flip it
 - **Focus indicator** you choose: a coloured border in the gap (one colour,
   your colour scheme's accent, or a gradient, with rounded corners if you
   like), Plasma's own window decorations, or nothing.

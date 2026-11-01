@@ -122,6 +122,10 @@ function shortcutList() {
         ["moveMarkedToPreselection", "Move the newest marked window into the newest preselection", ""],
         ["balance", "Balance the workspace: every window the same area", ""],
         ["equalize", "Reset the splits around the window to the default ratio", ""],
+        ["rotateClockwise", "Rotate the split around the window clockwise", ""],
+        ["rotateCounterClockwise", "Rotate the split around the window anticlockwise", ""],
+        ["flipHorizontal", "Flip the split around the window top to bottom", ""],
+        ["flipVertical", "Flip the split around the window left to right", ""],
 
         ["Other"],
         ["showKeys", "Show keyboard shortcuts", "Meta+K"],

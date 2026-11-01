@@ -224,6 +224,7 @@ table below shows the US keys.
 | unbound | After bspwm (see [Preselection and the tree](settings.md#preselection-and-the-tree-after-bspwm)): preselect a side (`preselectLeft` / `Down` / `Up` / `Right`), its ratio (`preselectRatio1` … `9`), cancel it (`preselectCancel`, `preselectCancelAll`) |
 | unbound | Move window into the newest preselection (`moveToPreselection`), mark / unmark window (`toggleMarked`), move the newest marked window into the newest preselection (`moveMarkedToPreselection`) |
 | unbound | Balance the workspace (`balance`), reset the splits around the window (`equalize`) |
+| unbound | Rotate the split around the window (`rotateClockwise`, `rotateCounterClockwise`), flip it (`flipHorizontal`, `flipVertical`) |
 
 Mouse: hold Meta and drag with the left button to move a window (drop it on
 another tile to re-tile there, or on another monitor), or with the right

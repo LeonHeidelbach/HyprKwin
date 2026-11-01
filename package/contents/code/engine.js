@@ -1290,6 +1290,53 @@ function createEngine(userConfig) {
             return changed;
         },
 
+        // Turn the window's parent split, and everything in it, a quarter
+        // turn: 90 clockwise, 270 (or -90) anticlockwise, 180 half round. As
+        // bspwm's rotate_tree: every split turns the other way, and a split's
+        // two sides change places where the turn carries the first one past
+        // the second.
+        rotate: function (id, deg) {
+            var leaf = leafOf[id];
+            deg = ((deg % 360) + 360) % 360;
+            if (!leaf || !leaf.parent || modeOf(spaceOf[id]) !== "dwindle" || [90, 180, 270].indexOf(deg) < 0) return false;
+            var turn = function (n) {
+                if (!n || n.leaf) return;
+                if ((deg === 90 && n.dir === "v") || (deg === 270 && n.dir === "h") || deg === 180) {
+                    var t = n.a; n.a = n.b; n.b = t;
+                    n.ratio = 1 - n.ratio;
+                }
+                if (deg !== 180) {
+                    n.dir = n.dir === "h" ? "v" : "h";
+                    n.locked = true;        // kept, even when splits follow the shape
+                }
+                turn(n.a);
+                turn(n.b);
+            };
+            turn(leaf.parent);
+            return true;
+        },
+
+        // Mirror the window's parent split and everything in it (bspwm
+        // node -F): "horizontal" swaps what is above and below (the stacked
+        // splits), "vertical" what is left and right (side by side).
+        flip: function (id, axis) {
+            var leaf = leafOf[id];
+            if (!leaf || !leaf.parent || modeOf(spaceOf[id]) !== "dwindle") return false;
+            var dir = axis === "horizontal" ? "v" : axis === "vertical" ? "h" : null;
+            if (!dir) return false;
+            var mirror = function (n) {
+                if (!n || n.leaf) return;
+                if (n.dir === dir) {
+                    var t = n.a; n.a = n.b; n.b = t;
+                    n.ratio = 1 - n.ratio;
+                }
+                mirror(n.a);
+                mirror(n.b);
+            };
+            mirror(leaf.parent);
+            return true;
+        },
+
         // ---- flags (bspwm's marked) ----------------------------------------
 
         flag: function (id, name) { return flagOf(id, name); },

@@ -265,6 +265,13 @@ none. `equalize` puts the splits around the focused window, its parent split
 and everything in it, back to the default ratio (`node @parent
 --equalize`).
 
+**Rotate and flip** (`node @parent -R` and `-F`). `rotateClockwise` and
+`rotateCounterClockwise` turn the focused window's parent split, and
+everything in it, a quarter turn: every split turns the other way, and the
+two sides change places where the turn carries the first past the second,
+as bspwm's `rotate_tree` does. `flipHorizontal` swaps what is above and
+below, `flipVertical` what is left and right.
+
 ### Scratchpads
 
 `Meta+S` shows and hides the scratchpad, and `Meta+Alt+S` puts the focused
