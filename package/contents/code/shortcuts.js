@@ -20,7 +20,7 @@ function shortcutList() {
         ["ruleFloatApp", "Always float this app", ""],
         ["ruleTileApp", "Always tile this app", ""],
         ["ruleScratchpadApp", "Always open this app in the scratchpad", ""],
-        ["toggleLocked", "Lock / unlock window (the close key leaves it open)", ""],
+        ["toggleLocked", "Lock / unlock window: HyprKwin's key leaves it open", ""],
         ["togglePrivate", "Keep new windows from splitting this one (private)", ""],
 
         ["Focus and moving"],
@@ -434,15 +434,18 @@ function keysGuide(infos, submaps, conflicts, labels) {
 // The keys guide narrowed to what is typed into its search box. Every word
 // has to be found in a row: in its label, its section or its keys ("meta+k",
 // "shift", "scratch"), or loosely, as letters in order in its label ("mvws"
-// finds "Move window to workspace"). A submap's own lines bring the line that
-// enters it along, so they still read as part of it.
-function keysGuideMatches(query, section, row) {
+// finds "Move window to workspace"). The loose way is only tried when nothing
+// matches as typed: with as many labels as there are, the letters of a whole
+// word ("close") turn up in order in a dozen others. A submap's own lines
+// bring the line that enters it along, so they still read as part of it.
+function keysGuideMatches(query, section, row, loose) {
     var words = String(query || "").toLowerCase().split(/\s+/).filter(function (w) { return w; });
     if (!words.length) return true;
     var label = String(row.label || "").toLowerCase();
     var hay = [section.title, row.label, (row.keys || []).join(" "), row.note || ""].join(" ").toLowerCase();
     return words.every(function (w) {
         if (hay.indexOf(w) >= 0) return true;
+        if (loose === false) return false;
         var at = 0;
         for (var i = 0; i < label.length && at < w.length; i++) if (label[i] === w[at]) at++;
         return at === w.length;
@@ -451,6 +454,11 @@ function keysGuideMatches(query, section, row) {
 
 function filterKeysGuide(sections, query) {
     if (!String(query || "").trim()) return sections || [];
+    var exact = filterKeysGuideBy(sections, query, false);
+    return exact.length ? exact : filterKeysGuideBy(sections, query, true);
+}
+
+function filterKeysGuideBy(sections, query, loose) {
     var out = [];
     (sections || []).forEach(function (sec) {
         var rows = [], parent = -1, parentAdded = false;
@@ -459,7 +467,7 @@ function filterKeysGuide(sections, query) {
                 parent = i;
                 parentAdded = false;
             }
-            if (!keysGuideMatches(query, sec, row)) return;
+            if (!keysGuideMatches(query, sec, row, loose)) return;
             if (row.indent && parent >= 0 && !parentAdded) {
                 rows.push(sec.rows[parent]);
                 parentAdded = true;

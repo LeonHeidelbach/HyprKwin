@@ -133,9 +133,8 @@ Deno.test("the keys guide can be searched by name, section, key or loosely", () 
     const guide = S.keysGuide(infos({}), submaps, [], {});
     const labels = (q) => S.filterKeysGuide(guide, q).flatMap((s) => s.rows.map((r) => r.label));
     assertEquals(S.filterKeysGuide(guide, "  "), guide, "nothing typed: everything");
-    assertEquals(labels("close")[0], "Close window", "the closest match first");
-    assertEquals(labels("CLOSE win")[0], "Close window", "any case, every word");
-    assertEquals(labels("close window").length < 10, true, "and few others");
+    assertEquals(labels("close"), ["Close window"]);
+    assertEquals(labels("CLOSE win"), ["Close window"], "any case, every word");
     assertEquals(labels("meta+k"), ["Show keyboard shortcuts"], "by key");
     assert(labels("scratchpad").length >= 2, "by section");
     assert(labels("swtw").includes("Switch to workspace 1–10"), "letters in order");
@@ -145,7 +144,8 @@ Deno.test("the keys guide can be searched by name, section, key or loosely", () 
                  ["Enter the resize submap", "resize: Move split left"]);
     const sub = S.filterKeysGuide(guide, "leave the submap").find((s) => s.title === "Submaps");
     assertEquals(sub.rows[0].label, "Enter the resize submap", "the submap's own entry comes first");
-    assertEquals(S.filterKeysGuide(guide, "show keyboard")[0].rows.length, 1, "sections keep only what matches");
+    assertEquals(S.filterKeysGuide(guide, "close")[0].rows.length, 1, "sections keep only what matches");
+    assert(labels("prsl").length >= 4, "letters in order, when nothing matches as typed");
 });
 
 Deno.test("workspace keys follow the keyboard layout's digit row", () => {
