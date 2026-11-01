@@ -2990,32 +2990,55 @@ def launchers_do_not_get_a_border(sb):
     eq(sb.overlays(), [], "but gets no border")
 
 
-@test(config={"BorderSize": 4, "WindowRules": "float, title:^F$\nmove 900 300, title:^F$\nsize 200 200, title:^F$"})
-def the_border_hides_under_a_window_above(sb):
+def red_in(sb, path, points):
+    """Which of `points` are the border's red in a screenshot of the workspace."""
+    from PIL import Image
+    sb.screenshot(path)
+    px = Image.open(path).convert("RGB").load()
+    return [all(abs(a - b) < 60 for a, b in zip(px[x, y], (255, 0, 0))) for x, y in points]
+
+
+RED_BORDER = {"BorderSize": 6, "ActiveBorderSource": 1, "ActiveBorderColor": "255,0,0"}
+
+
+@test(config=dict(RED_BORDER, WindowRules="float, title:^F$\nmove 900 300, title:^F$\nsize 200 200, title:^F$"))
+def the_border_leaves_out_a_window_above(sb):
     """A window kept above a tile's edge must not get the tile's border
-    painted across it."""
+    painted across it; the rest of the border stays."""
     sb.spawn("A")
-    sb.spawn("B")
-    sb.spawn("F")                            # floats over B's left edge
+    sb.spawn("B", color="#0000ff")
+    sb.spawn("F", color="#00ff00")           # floats over B's left edge
     sb.invoke("Window Above Other Windows")  # and stays above
     sb.input().click(1500, 600)              # focus B
     sb.settle(0.6)
     s = sb.state()
     eq(s["active"], sb.window("B", s)["id"], "B focused")
-    eq(sb.overlays(), [], "B's border would cross F: hidden")
+    fx, fy, fw, fh = sb.geometry("F", s)
+    bx, by, bw, bh = sb.geometry("B", s)
+    eq(fx < bx < fx + fw, True, "F reaches over B's left edge: %r %r" % ((fx, fy, fw, fh), (bx, by, bw, bh)))
+    eq(len(sb.overlays()), 4, "B's border is all still there, as four strips")
+    border = [b for b in s["borders"] if b["active"]][0]
+    eq([(c["x"], c["y"], c["width"], c["height"]) for c in border["cuts"]], [(fx, fy, fw, fh)], "less what F covers")
+    if sb.opengl:
+        edge = bx - 3                        # the middle of B's left border strip
+        seen = red_in(sb, sb.base / "above.png",
+                      [(edge, fy - 40), (edge, fy + fh // 2), (edge, fy + fh + 40), (bx + bw // 2, by - 3)])
+        eq(seen, [True, False, True, True], "red above and below F and along the top, none across F")
     sb.clients[-1].kill()
     sb.wait_for(lambda s: all(w["caption"] != "F" for w in s["windows"].values()), "F closed")
     sb.settle(0.6)
-    eq(len(sb.overlays()), 4, "border back once nothing covers it")
+    eq([b["cuts"] for b in sb.state()["borders"]], [[]], "nothing left out once nothing covers it")
+    if sb.opengl:
+        eq(red_in(sb, sb.base / "after.png", [(bx - 3, fy + fh // 2)]), [True], "the border is whole again")
 
 
-@test(config={"BorderSize": 4})
-def border_gives_way_to_menus(sb):
-    """Overlays are drawn above ordinary windows, so a menu spilling past a
-    window's edge must not have the border painted across it."""
+@test(config=RED_BORDER)
+def the_border_leaves_out_a_menu(sb):
+    """A menu spilling past a window's edge is not painted over; the border
+    keeps everything else, on either side of the menu too."""
     sb.spawn("A")
-    sb.spawn("B", extra=["--menu"])
-    sb.spawn("C")
+    sb.spawn("B", extra=["--menu"], color="#0000ff")
+    sb.spawn("C", color="#0000ff")
     sb.settle(0.5)
     fi = sb.input()
     fi.click(1400, 450, BTN_RIGHT)  # inside B; the menu runs on past its bottom edge
@@ -3023,11 +3046,20 @@ def border_gives_way_to_menus(sb):
     s = sb.state()
     eq(s["windows"][s["active"]]["caption"], "B", "right-click activated B")
     eq(len(s["popups"]), 1, "menu is open")
-    eq(sb.overlays(), [], "border hidden while the menu crosses it")
+    m = s["popups"][0]
+    eq(len(sb.overlays()), 4, "the border stays, as four strips")
+    border = [b for b in s["borders"] if b["active"]][0]
+    eq(len(border["cuts"]), 1, "less what the menu covers")
+    bx, by, bw, bh = sb.geometry("B", s)
+    if sb.opengl:
+        row = by + bh + 3                    # the middle of B's bottom border strip
+        seen = red_in(sb, sb.base / "menu.png", [(m["x"] - 20, row), (m["x"] + m["width"] // 2, row),
+                                                 (m["x"] + m["width"] + 20, row), (bx - 3, by + bh // 2)])
+        eq(seen, [True, False, True, True], "red either side of the menu and along the left, none under it")
     fi.combo("escape")
     sb.wait_for(lambda s: not s["popups"], "menu closed")
     sb.settle(0.5)
-    eq(len(sb.overlays()), 4, "border returns once the menu closes")
+    eq([b["cuts"] for b in sb.state()["borders"] if b["active"]], [[]], "whole again once the menu closes")
 
 
 @test(config={"BorderSize": 4})
@@ -3549,18 +3581,25 @@ def panels_are_drawn_over_borders(sb):
     sb.settle(1.0)
     px, py, pw, ph = panel_rect(sb)
     x, y, w, h = sb.geometry("B")
-    left = x - 2                                     # in B's border, beside it
-    eq(overlays_at(sb, left, py + ph // 2), [], "no border over the panel")
-    above = overlays_at(sb, left, py - 20)
-    eq(len(above), 1, "the border is there above the panel: %r" % (above,))
-    eq(above[0][1] + above[0][3], py, "and stops where the panel starts")
-    eq(overlays_at(sb, x + w // 2, y + h + 2), [], "no bottom edge over the panel")
+
+    def cuts_of_b():                                 # B has the focus: its border is the focused one
+        s = sb.state()
+        eq(s["active"], sb.window("B", s)["id"], "B focused")
+        return [(c["x"], c["y"], c["width"], c["height"]) for b in s["borders"] if b["active"] for c in b["cuts"]]
+    eq(cuts_of_b(), [(px, py, pw, ph)], "the border leaves out the panel, and only the panel")
+    if sb.opengl:
+        shot = sb.base / "panel.png"
+        sb.screenshot(shot)
+        from PIL import Image
+        img = Image.open(shot).convert("RGB")
+        under = img.getpixel((x - 2, py + ph // 2))
+        beside = img.getpixel((x - 2, py - 20))
+        eq(under != beside, True, "the panel, not the border, under it: %r vs %r" % (under, beside))
     # An ordinary panel again: the windows above it, their borders whole.
     height.restart({"PlasmaViews][Panel %s" % pid: {"panelVisibility": "0"}})
     sb.wait_for(lambda s: sb.geometry("B", s)[1] + sb.geometry("B", s)[3] <= py, "B above the panel")
     sb.settle(1.0)
-    x, y, w, h = sb.geometry("B")
-    eq(len(overlays_at(sb, x + w // 2, y + h + 2)), 1, "the bottom edge back")
+    eq(cuts_of_b(), [], "nothing left out")
     # Floating, the panel's window runs on past what it draws, into the gap
     # beside the windows; that margin does not cut their borders.
     height.shell("panels()[0].floating = true")
@@ -3569,7 +3608,7 @@ def panels_are_drawn_over_borders(sb):
     x, y, w, h = sb.geometry("B")
     py = panel_rect(sb)[1]
     assert py < y + h + 2, "the panel's window reaching into the gap"
-    eq(len(overlays_at(sb, x + w // 2, y + h + 2)), 1, "the bottom edge whole beside a floating panel")
+    eq(cuts_of_b(), [], "the bottom edge whole beside a floating panel")
 
 
 def y_range(sb, path, rgb, tol=40):

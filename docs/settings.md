@@ -376,8 +376,12 @@ styles are exclusive, and you pick one in the settings:
   overlay windows per border, since KWin scripts have no other way to draw on
   screen. Floating windows get the border too when they have no title bar
   (hidden with "Hide title bars on floating windows too", or an app that
-  draws its own), and a border steps aside wherever a menu or a window stacked
-  above would otherwise have it painted across it.
+  draws its own). KWin draws a script's windows above everything else, so
+  where a menu, a tooltip, a panel or a window stacked above reaches over a
+  border, that part of the border is left out and the rest stays: it looks
+  as if drawn under them. (KWin keeps a script's windows above all others
+  whatever is asked of it, so they cannot simply be put below.) Group tab
+  bars still step aside whole for a menu.
 - **The window decoration** — HyprKwin leaves decorations alone and the
   decoration marks the focused window, creating no overlay windows at all.
   With a normal theme that means a title bar on every tile; a *frame-only*

@@ -4,11 +4,17 @@
 import QtQuick
 import QtQuick.Shapes
 import QtQuick.Window
+import "../code/cuts.js" as Cuts
 
 Window {
     id: strip
 
     property rect area: Qt.rect(0, 0, 0, 0)
+    // What is in front of the window the border belongs to (menus, tooltips,
+    // windows stacked above, panels): left out, as holes the strip does not
+    // paint, so they show through. It stays mapped whatever is covered.
+    property var cuts: []
+    readonly property var pieces: Cuts.visiblePieces(area, cuts)
     // Every strip draws the whole ring, positioned so that only its own piece
     // of it falls inside the window. That keeps corners exact and lets one
     // gradient run around the entire border.
@@ -72,15 +78,34 @@ Window {
     // drag does at every step.
     readonly property bool plain: radius <= 0 && Qt.colorEqual(stripColor, stripColor2)
 
-    Rectangle {
-        anchors.fill: parent
-        visible: strip.plain
-        color: strip.stripColor
+    Repeater {
+        model: strip.plain ? strip.pieces : []
+        Rectangle {
+            required property var modelData
+            x: modelData.x
+            y: modelData.y
+            width: modelData.width
+            height: modelData.height
+            color: strip.stripColor
+        }
     }
 
-    Loader {
-        active: !strip.plain
-        sourceComponent: ringComponent
+    // Rounded or a gradient: the ring, drawn in each uncovered piece.
+    Repeater {
+        model: strip.plain ? [] : strip.pieces
+        Item {
+            required property var modelData
+            x: modelData.x
+            y: modelData.y
+            width: modelData.width
+            height: modelData.height
+            clip: true
+            Loader {
+                x: -parent.x
+                y: -parent.y
+                sourceComponent: ringComponent
+            }
+        }
     }
 
     Component {

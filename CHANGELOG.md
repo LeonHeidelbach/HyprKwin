@@ -41,6 +41,12 @@
 
 ### Fixed
 
+- **A tooltip or menu over a border no longer takes the whole border
+  away.** Hovering a panel widget whose tooltip reached over a window's
+  border, or opening a menu across it, used to hide that window's whole
+  border. Now only the part actually covered is left out; the rest stays,
+  on every side and either side of the tooltip. The same goes for windows
+  stacked above, panels, and the preselection feedback.
 - **Borders only change colour when the focus moves.** With unfocused
   borders on, a focus change used to take one window's border away and give
   another window a new one, and Plasma's open and close animations (Scale,

@@ -8,6 +8,7 @@ How HyprKwin is built and tested.
 package/
   metadata.json                KWin script metadata (declarative script)
   contents/code/engine.js      pure dwindle tree: layout, gaps, splits, groups, resize, directions
+  contents/code/cuts.js        the holes overlays leave for what is in front of their window
   contents/code/rules.js       window-rule parser
   contents/code/driver.js      binds the engine to KWin (spaces, windows, actions)
   contents/code/shortcuts.js   default shortcuts

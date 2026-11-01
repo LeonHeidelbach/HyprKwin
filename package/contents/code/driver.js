@@ -129,6 +129,7 @@ function createDriver(env) {
     var keysReturnTo = null;        // the window that had the focus before it
     var actions = null;             // action name -> function, filled in below
     var preselRects = [];           // [{id, owner, rect}] where preselected windows would go, on screen
+    var lastBorders = [];           // the borders drawn, with what each leaves out
     var lastPresels = [];           // and those drawn
     // A window focused by walking the focus history: its activation is not
     // recorded, so the walk can go on from where it got to.
@@ -1920,39 +1921,32 @@ function createDriver(env) {
         return !insideInner;
     }
 
-    // Whether a window stacked above `w` crosses the ring its border occupies.
-    function coveredAbove(w, outer, thickness) {
+    // What is in front of `w` where it reaches over `r` (with no `w`, any
+    // window that is not tiled): windows stacked above it, and panels that
+    // let windows go below them. KWin draws a script's windows above all of
+    // these, and gives scripts no way to put them lower, so the overlays
+    // leave these parts out (see cuts.js) as if drawn under them. A panel
+    // that keeps windows clear of it, reserving its space, never covers them:
+    // it is passed over, as a floating one's window runs on past what it
+    // draws, into the border. Menus and tooltips are popupRects()'s.
+    function rectsAbove(w, r) {
         var order = ws.stackingOrder || [];
-        var i = 0;
-        while (i < order.length && order[i] !== w) i++;
-        for (var j = i + 1; j < order.length; j++) {
-            var o = order[j];
-            if (!o || o.deleted || o.minimized || String(o.caption) === OVERLAY_TITLE) continue;
-            if (o.desktopWindow || o.dock || o.popupWindow) continue;
-            if (!(o.normalWindow || o.dialog || o.utility || o.notification || o.criticalNotification)) continue;
-            if (!kwinVisible(o) || !onCurrentActivity(o)) continue;
-            if (crossesBand(copyRect(o.frameGeometry), outer, thickness)) return true;
-        }
-        return false;
-    }
-
-    // Panels stacked above `w` that reach over its border. Overlays are drawn
-    // above panels, and KWin gives scripts no way to put them lower, so the
-    // border is cut away where a panel set to let windows go below it covers
-    // it, as if the panel were drawn on top. A panel that keeps windows clear
-    // of it, reserving its space, never covers them: it is passed over, as a
-    // floating one's window runs on past what it draws, into the border.
-    function panelsAbove(w, outer) {
-        var order = ws.stackingOrder || [];
-        var i = 0;
-        while (i < order.length && order[i] !== w) i++;
+        var i = w ? order.indexOf(w) : -1;
         var out = [];
         for (var j = i + 1; j < order.length; j++) {
             var o = order[j];
-            if (!o || !o.dock || o.deleted || o.minimized || o.hidden) continue;
-            var r = copyRect(o.frameGeometry);
-            if (!usableRect(r) || !overlaps(r, outer) || reservesSpace(o, r)) continue;
-            out.push(r);
+            if (!o || o === w || o.deleted || o.minimized || String(o.caption) === OVERLAY_TITLE) continue;
+            var g = copyRect(o.frameGeometry);
+            if (!usableRect(g) || !overlaps(g, r)) continue;
+            if (o.dock) {
+                if (!o.hidden && !reservesSpace(o, g)) out.push(g);
+                continue;
+            }
+            if (o.desktopWindow || o.popupWindow) continue;
+            if (!(o.normalWindow || o.dialog || o.utility || o.notification || o.criticalNotification)) continue;
+            if (!w && isTiled(stOf(o))) continue;
+            if (!kwinVisible(o) || !onCurrentActivity(o)) continue;
+            out.push(g);
         }
         return out;
     }
@@ -2034,20 +2028,13 @@ function createDriver(env) {
                     log("skipping border for", w.caption, JSON.stringify(outer));
                     return;
                 }
+                // Overlays are drawn above everything: whatever is in front
+                // of the window (a menu, a tooltip, a window or panel above)
+                // is left out of its border, which keeps the rest.
                 var band = b + Math.max(0, cfg.borderRadius);
-                for (var p = 0; p < popups.length; p++) {
-                    if (crossesBand(popups[p], outer, band)) {
-                        log("border hidden behind a popup", w.caption);
-                        return;
-                    }
-                }
-                // Overlays are drawn above everything, so a window stacked
-                // over this one must not have the border painted across it.
-                if (coveredAbove(w, outer, band)) {
-                    log("border hidden behind a window above", w.caption);
-                    return;
-                }
-                outer.cuts = panelsAbove(w, outer);
+                outer.cuts = popups.concat(rectsAbove(w, outer)).filter(function (c) {
+                    return crossesBand(c, outer, band);
+                });
                 borders.push(outer);
             });
         }
@@ -2068,6 +2055,7 @@ function createDriver(env) {
             });
             return bar;
         });
+        lastBorders = borders;
         env.ui.setBorders(borders, cfg);
         env.ui.setGroupBars(bars, cfg);
         lastPresels = preselFeedback(popups, fullscreenScreens);
@@ -2091,8 +2079,8 @@ function createDriver(env) {
     }
 
     // Where the preselected windows will go, as filled areas over their
-    // tiles (bspwm's presel_feedback). Like a border, one steps aside for a
-    // menu, or a window stacked over it, which it would be drawn across.
+    // tiles (bspwm's presel_feedback). Like a border, one leaves out what is
+    // in front of it: a menu, a tooltip, a window stacked over it.
     function preselFeedback(popups, fullscreenScreens) {
         if (!cfg.preselFeedback) return [];
         var out = [];
@@ -2102,30 +2090,12 @@ function createDriver(env) {
             var mid = { x: r.x + r.width / 2, y: r.y + r.height / 2 };
             var screen = screens().filter(function (sc) { return contains(sc.geometry, mid); })[0];
             if (screen && fullscreenScreens[screen.name]) return;
-            if (popups.some(function (p) { return overlaps(p, r); })) return;
             var owner = f.owner ? tracked[f.owner] : null;
             if (f.owner && (!owner || owner.w.minimized)) return;
-            if (stackedOver(owner ? owner.w : null, r)) return;
-            out.push({ id: f.id, owner: f.owner, x: r.x, y: r.y, width: r.width, height: r.height });
+            var cuts = popups.filter(function (p) { return overlaps(p, r); }).concat(rectsAbove(owner ? owner.w : null, r));
+            out.push({ id: f.id, owner: f.owner, x: r.x, y: r.y, width: r.width, height: r.height, cuts: cuts });
         });
         return out;
-    }
-
-    // Whether a window stacked above `w` (with no `w`, any window that is
-    // not tiled) reaches over `r`.
-    function stackedOver(w, r) {
-        var order = ws.stackingOrder || [];
-        var i = w ? order.indexOf(w) : -1;
-        for (var j = i + 1; j < order.length; j++) {
-            var o = order[j];
-            if (!o || o === w || o.deleted || o.minimized || String(o.caption) === OVERLAY_TITLE) continue;
-            if (o.desktopWindow || o.dock || o.popupWindow) continue;
-            if (!(o.normalWindow || o.dialog || o.utility || o.notification || o.criticalNotification)) continue;
-            if (!w && isTiled(stOf(o))) continue;
-            if (!kwinVisible(o) || !onCurrentActivity(o)) continue;
-            if (overlaps(copyRect(o.frameGeometry), r)) return true;
-        }
-        return false;
     }
 
     // What the animations effect dims while the scratchpad is open: every
@@ -4228,6 +4198,9 @@ function createDriver(env) {
                 iconTiles: lastIconTiles,
                 stagePreviews: lastStagePreviews,
                 presels: lastPresels,
+                borders: lastBorders.map(function (b) {
+                    return { id: b.id, x: b.x, y: b.y, width: b.width, height: b.height, active: b.active, cuts: b.cuts };
+                }),
                 groupAuto: JSON.parse(JSON.stringify(groupAuto)),
                 dim: lastDim,
                 zoomEscape: zoomKeysOn,

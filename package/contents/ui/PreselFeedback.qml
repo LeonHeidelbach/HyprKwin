@@ -2,11 +2,16 @@
 // a filled area over the part of the tile it will take.
 import QtQuick
 import QtQuick.Window
+import "../code/cuts.js" as Cuts
 
 Window {
     id: win
 
     property var area: null              // {x, y, width, height}
+    // What is in front of it (a menu, a tooltip, a window above): left out,
+    // as holes it does not paint.
+    property var cuts: []
+    readonly property var pieces: area ? Cuts.visiblePieces(area, cuts) : []
     property color fillColor: "#27293b"
     property real fillOpacity: 0.8
     property int radius: 0
@@ -43,10 +48,24 @@ Window {
     Component.onCompleted: sync()
     Component.onDestruction: hide()
 
-    Rectangle {
-        anchors.fill: parent
-        color: win.fillColor
-        opacity: win.fillOpacity
-        radius: Math.max(0, Math.min(win.radius, Math.floor(Math.min(win.width, win.height) / 2)))
+    Repeater {
+        model: win.pieces
+        Item {
+            required property var modelData
+            x: modelData.x
+            y: modelData.y
+            width: modelData.width
+            height: modelData.height
+            clip: true
+            Rectangle {
+                x: -parent.x
+                y: -parent.y
+                width: win.width
+                height: win.height
+                color: win.fillColor
+                opacity: win.fillOpacity
+                radius: Math.max(0, Math.min(win.radius, Math.floor(Math.min(win.width, win.height) / 2)))
+            }
+        }
     }
 }

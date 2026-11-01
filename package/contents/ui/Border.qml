@@ -41,26 +41,10 @@ Item {
     // Corners can never take more than half the window.
     readonly property int r: Math.max(0, Math.min(radius, Math.floor(Math.min(outer.width, outer.height) / 2)))
 
-    // Panels drawn over this border (see panelsAbove in the driver): each
-    // piece keeps only its largest part outside them. A piece draws its slice
-    // of the whole ring, so a smaller piece is simply clipped.
+    // What is in front of the window (see bordersAbove in the driver):
+    // menus, tooltips, windows stacked above, panels. Each strip leaves out
+    // the part of itself they cover and draws the rest.
     readonly property var cuts: frame && frame.cuts ? frame.cuts : []
-    function cut(x, y, w, h) {
-        for (const c of cuts) {
-            const cx2 = c.x + c.width, cy2 = c.y + c.height;
-            if (x >= cx2 || y >= cy2 || c.x >= x + w || c.y >= y + h) continue;
-            const parts = [
-                [x, y, w, c.y - y],                       // above it
-                [x, cy2, w, y + h - cy2],                 // below it
-                [x, y, c.x - x, h],                       // left of it
-                [cx2, y, x + w - cx2, h],                 // right of it
-            ].filter(p => p[2] > 0 && p[3] > 0);
-            if (!parts.length) return Qt.rect(x, y, 0, 0);
-            parts.sort((a, b) => b[2] * b[3] - a[2] * a[3]);
-            [x, y, w, h] = parts[0];
-        }
-        return Qt.rect(x, y, w, h);
-    }
 
     readonly property bool spinning: shown && active && activeGradient && spinSpeed > 0
 
@@ -95,7 +79,8 @@ Item {
         offset: Qt.point(area.x - border.outer.x, area.y - border.outer.y)
         radius: border.r
         thickness: border.b
-        area: border.cut(border.outer.x + border.r, border.outer.y, border.outer.width - 2 * border.r, border.b)
+        cuts: border.cuts
+        area: Qt.rect(border.outer.x + border.r, border.outer.y, border.outer.width - 2 * border.r, border.b)
     }
     BorderStrip {
         id: bottom
@@ -109,7 +94,8 @@ Item {
         offset: Qt.point(area.x - border.outer.x, area.y - border.outer.y)
         radius: border.r
         thickness: border.b
-        area: border.cut(border.outer.x + border.r, border.outer.y + border.outer.height - border.b, border.outer.width - 2 * border.r, border.b)
+        cuts: border.cuts
+        area: Qt.rect(border.outer.x + border.r, border.outer.y + border.outer.height - border.b, border.outer.width - 2 * border.r, border.b)
     }
     BorderStrip {
         id: left
@@ -123,7 +109,8 @@ Item {
         offset: Qt.point(area.x - border.outer.x, area.y - border.outer.y)
         radius: border.r
         thickness: border.b
-        area: border.cut(border.outer.x, border.outer.y + Math.max(border.b, border.r), border.b, border.outer.height - 2 * Math.max(border.b, border.r))
+        cuts: border.cuts
+        area: Qt.rect(border.outer.x, border.outer.y + Math.max(border.b, border.r), border.b, border.outer.height - 2 * Math.max(border.b, border.r))
     }
     BorderStrip {
         id: right
@@ -137,7 +124,8 @@ Item {
         offset: Qt.point(area.x - border.outer.x, area.y - border.outer.y)
         radius: border.r
         thickness: border.b
-        area: border.cut(border.outer.x + border.outer.width - border.b, border.outer.y + Math.max(border.b, border.r), border.b, border.outer.height - 2 * Math.max(border.b, border.r))
+        cuts: border.cuts
+        area: Qt.rect(border.outer.x + border.outer.width - border.b, border.outer.y + Math.max(border.b, border.r), border.b, border.outer.height - 2 * Math.max(border.b, border.r))
     }
 
     // One window per corner, for the rounded part of the ring.
@@ -153,9 +141,10 @@ Item {
         offset: Qt.point(area.x - border.outer.x, area.y - border.outer.y)
         radius: border.r
         thickness: border.b
+        cuts: border.cuts
         // Nothing to draw without rounded corners: kept still, so a
         // border that moves does not move these (hidden) windows as well.
-        area: border.r > 0 ? border.cut(border.outer.x, border.outer.y, border.r, border.r) : Qt.rect(0, 0, 0, 0)
+        area: border.r > 0 ? Qt.rect(border.outer.x, border.outer.y, border.r, border.r) : Qt.rect(0, 0, 0, 0)
     }
     BorderStrip {
         id: topRight
@@ -169,9 +158,10 @@ Item {
         offset: Qt.point(area.x - border.outer.x, area.y - border.outer.y)
         radius: border.r
         thickness: border.b
+        cuts: border.cuts
         // Nothing to draw without rounded corners: kept still, so a
         // border that moves does not move these (hidden) windows as well.
-        area: border.r > 0 ? border.cut(border.outer.x + border.outer.width - border.r, border.outer.y, border.r, border.r) : Qt.rect(0, 0, 0, 0)
+        area: border.r > 0 ? Qt.rect(border.outer.x + border.outer.width - border.r, border.outer.y, border.r, border.r) : Qt.rect(0, 0, 0, 0)
     }
     BorderStrip {
         id: bottomLeft
@@ -185,9 +175,10 @@ Item {
         offset: Qt.point(area.x - border.outer.x, area.y - border.outer.y)
         radius: border.r
         thickness: border.b
+        cuts: border.cuts
         // Nothing to draw without rounded corners: kept still, so a
         // border that moves does not move these (hidden) windows as well.
-        area: border.r > 0 ? border.cut(border.outer.x, border.outer.y + border.outer.height - border.r, border.r, border.r) : Qt.rect(0, 0, 0, 0)
+        area: border.r > 0 ? Qt.rect(border.outer.x, border.outer.y + border.outer.height - border.r, border.r, border.r) : Qt.rect(0, 0, 0, 0)
     }
     BorderStrip {
         id: bottomRight
@@ -201,8 +192,9 @@ Item {
         offset: Qt.point(area.x - border.outer.x, area.y - border.outer.y)
         radius: border.r
         thickness: border.b
+        cuts: border.cuts
         // Nothing to draw without rounded corners: kept still, so a
         // border that moves does not move these (hidden) windows as well.
-        area: border.r > 0 ? border.cut(border.outer.x + border.outer.width - border.r, border.outer.y + border.outer.height - border.r, border.r, border.r) : Qt.rect(0, 0, 0, 0)
+        area: border.r > 0 ? Qt.rect(border.outer.x + border.outer.width - border.r, border.outer.y + border.outer.height - border.r, border.r, border.r) : Qt.rect(0, 0, 0, 0)
     }
 }

@@ -896,6 +896,7 @@ Item {
             presel.fillOpacity = cfg.preselFeedbackOpacity || 0.8;
             presel.radius = cfg.borderRadius || 0;
             presel.area = { x: entry.x, y: entry.y, width: entry.width, height: entry.height };
+            presel.cuts = entry.cuts || [];
             presel.revision = revision;
         }
         dropMissing(preselObjects, seen);
