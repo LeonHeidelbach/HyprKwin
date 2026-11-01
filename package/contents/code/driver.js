@@ -13,6 +13,40 @@ var SPECIAL = "special";
 function specialSpace(name) { return SPECIAL + ":" + name; }
 function isSpecialSpace(space) { return String(space).indexOf(SPECIAL + ":") === 0; }
 
+// Whether a window that has just opened waits unseen until it is in its
+// tile. KWin shows a new window where it placed it (centred, at the app's
+// own size) and only then does the window take its tile, so it would flash
+// there first. Only windows HyprKwin tiles, on a workspace on screen, and
+// not when it starts (those are already up): `w` is {enabled, initial,
+// tiled, special, pinned, fullScreen, maximized, minimized, shown}.
+function hidesUntilTiled(w) {
+    return !!(w.enabled && !w.initial && w.tiled && !w.special && !w.pinned &&
+              !w.fullScreen && !w.maximized && !w.minimized && w.shown);
+}
+
+// Why a window waiting unseen can be shown now, or null to keep waiting:
+// it has taken its tile (within a couple of pixels); or it has answered,
+// at a size of its own (KWin moves a Wayland window to its new place only
+// as the app takes the request, so a new size at the tile's corner means
+// an app that sizes itself in steps, or has a minimum size); or it has
+// waited as long as it may; or it is no longer a tile waiting for its place.
+// `w` is {tiled, fullScreen, maximized, minimized, geometry, placed,
+// opened (its geometry as it appeared), waited, timeout}.
+function revealReason(w) {
+    if (!w.tiled) return "no longer tiled";
+    if (w.fullScreen) return "full screen";
+    if (w.maximized) return "maximized";
+    if (w.minimized) return "minimized";
+    var g = w.geometry, p = w.placed, o = w.opened;
+    var near = function (a, b) { return Math.abs(a - b) <= 2; };
+    if (g && p && near(g.x, p.x) && near(g.y, p.y)) {
+        if (near(g.width, p.width) && near(g.height, p.height)) return "in its tile";
+        if (o && !(near(g.width, o.width) && near(g.height, o.height))) return "at a size of its own";
+    }
+    if (w.waited >= w.timeout) return "timed out";
+    return null;
+}
+
 // How long the geometries asked of a window are remembered, and how many.
 var SENT_MS = 5000, SENT_MAX = 64;
 
@@ -783,6 +817,10 @@ function createDriver(env) {
             // While zoomed in, Escape zooms back out (it is taken from apps
             // for as long as the zoom lasts).
             zoomEscape: bool(rc("ZoomEscape", false), false),
+            // A new tiled window stays unseen until it is in its tile, or
+            // for this long at most.
+            hideUntilTiled: bool(rc("HideUntilTiled", true), true),
+            hideUntilTiledTimeout: Math.max(100, Math.min(2000, num(rc("HideUntilTiledTimeout", 400), 400))),
             layoutOsd: bool(rc("LayoutOsd", true), true),
             // How long that message stays up; not in the settings page.
             osdDuration: Math.max(200, num(rc("OsdDuration", 1200), 1200)),
@@ -923,6 +961,7 @@ function createDriver(env) {
     }
 
     function untile(st) {
+        reveal(st, "no longer tiled");
         if (!isTiled(st)) return;
         engine.detach(st.id);
         setTiledDecoration(st, false);
@@ -1001,6 +1040,13 @@ function createDriver(env) {
             st.floatGeom = copyRect(w.frameGeometry);
             setTiledDecoration(st, false);
         }
+        // Unseen until it is in its tile (applyWindowRules below applies
+        // the opacity, before KWin draws a frame of it).
+        if (hidesUntilTiled({ enabled: cfg.hideUntilTiled, initial: initial, tiled: isTiled(st), special: !!st.special,
+                              pinned: st.pinned, fullScreen: w.fullScreen, maximized: isMaximized(w),
+                              minimized: w.minimized, shown: kwinVisible(w) && onCurrentActivity(w) })) {
+            hideUntilTiled(st);
+        }
         // Now that it is known whether the window floats, the rules about
         // where it goes and how it looks (floating: rules included).
         applyWindowRules(st, R.matchRules(rules, { "class": w.resourceClass, title: w.caption, floating: !isTiled(st) }),
@@ -1045,6 +1091,32 @@ function createDriver(env) {
             if (act && act !== st && isTiled(act) && engine.isGrouped(act.id)) return act.id;
         }
         return null;
+    }
+
+    // ---- new windows wait unseen until they are in their tile -------------
+
+    function hideUntilTiled(st) {
+        st.revealing = { since: Date.now(), opened: copyRect(st.w.frameGeometry) };
+        log("keeping", st.w.caption, "unseen until it is in its tile");
+        if (env.after) env.after(cfg.hideUntilTiledTimeout, function () { checkReveal(st); });
+    }
+
+    function checkReveal(st) {
+        if (!st.revealing || tracked[st.id] !== st) return;
+        var w = st.w;
+        var why = revealReason({ tiled: isTiled(st), fullScreen: w.fullScreen, maximized: isMaximized(w),
+                                 minimized: w.minimized, geometry: copyRect(w.frameGeometry), placed: st.placed,
+                                 opened: st.revealing.opened,
+                                 waited: Date.now() - st.revealing.since, timeout: cfg.hideUntilTiledTimeout });
+        if (why) reveal(st, why);
+    }
+
+    function reveal(st, why) {
+        if (!st.revealing) return;
+        st.revealing = null;
+        log("showing", st.w.caption + ":", why);
+        applyOpacity(st);
+        scheduleDecorations();        // its border was waiting for it too
     }
 
     // Hyprland's size / move / center / monitor / opacity / noborder rules.
@@ -1104,6 +1176,7 @@ function createDriver(env) {
     // opacity alone entirely, so Plasma's own opacity rules still work.
     function wantedOpacity(st) {
         var w = st.w;
+        if (st.revealing) return 0;     // waiting unseen for its tile
         if (w.fullScreen) return null;
         var focused = w === ws.activeWindow;
         if (st.ruleOpacity) return focused ? st.ruleOpacity.active : st.ruleOpacity.inactive;
@@ -1209,8 +1282,8 @@ function createDriver(env) {
         listen(w.minimizedChanged, function () { onMinimizedChanged(st); }, st);
         if (w.demandsAttentionChanged) listen(w.demandsAttentionChanged, function () { onDemandsAttention(st); }, st);
         listen(w.activitiesChanged, schedule, st);
-        listen(w.fullScreenChanged, function () { st.placed = null; applyOpacity(st); schedule(); }, st);
-        listen(w.maximizedChanged, function () { st.placed = null; schedule(); }, st);
+        listen(w.fullScreenChanged, function () { st.placed = null; checkReveal(st); applyOpacity(st); schedule(); }, st);
+        listen(w.maximizedChanged, function () { st.placed = null; checkReveal(st); schedule(); }, st);
         // Plasma's quick tiling / tile editor would fight our layout: take
         // tiled windows back from KWin's tiles and re-apply our geometry.
         if (w.tileChanged) listen(w.tileChanged, function () { onKWinTile(st); }, st);
@@ -1229,6 +1302,7 @@ function createDriver(env) {
 
     function onDesktopsChanged(st) {
         if (syncing) return;
+        reveal(st, "sent to another workspace");
         var w = st.w;
         if (st.special) {
             if (!w.onAllDesktops) leaveSpecial(st, false);
@@ -1270,7 +1344,10 @@ function createDriver(env) {
         var space = spaceOfWindow(st);
         // One that only came across because its monitor went away is not
         // being sent anywhere: it takes no preselection or empty tile there.
-        if (space && space !== engine.spaceOf(st.id)) engine.moveToSpace(st.id, space, { plain: !wasMoved });
+        if (space && space !== engine.spaceOf(st.id)) {
+            reveal(st, "moved to another monitor");
+            engine.moveToSpace(st.id, space, { plain: !wasMoved });
+        }
         schedule();
     }
 
@@ -1323,6 +1400,7 @@ function createDriver(env) {
     }
 
     function onMinimizedChanged(st) {
+        checkReveal(st);
         if (syncing) return;
         if (st.special && !st.w.minimized && st.special !== special.name) {
             toggleSpecial(st.special);
@@ -1339,6 +1417,7 @@ function createDriver(env) {
             if (!Object.keys(releasing).length) playQueued();
         }
         scheduleDecorations();
+        if (st.revealing) checkReveal(st);
         if (syncing) return;
         // Even mid-drag: the windows beside the one being dragged are asked
         // for a new size at every step, and answer late.
@@ -1886,7 +1965,7 @@ function createDriver(env) {
         if (drawBorders) {
             visible.forEach(function (st) {
                 var w = st.w;
-                if (st.ruleNoBorder) return;
+                if (st.ruleNoBorder || st.revealing) return;
                 if (w.fullScreen || isMaximized(w)) return;
                 // A floating window's own title bar already shows focus; one
                 // without (hidden, or an app drawing its own) gets a border,
@@ -3906,6 +3985,8 @@ function createDriver(env) {
             }
             var st = track(w, false);
             if (st) relayout();
+            // Its tile has been asked for at once; it may already be there.
+            if (st) checkReveal(st);
             else if (!isOverlay(w)) scheduleDecorations();  // a menu may cover a border
         });
         listen(ws.windowRemoved, function (w) {
@@ -4023,6 +4104,7 @@ function createDriver(env) {
                     }
                 }
                 st.ruleNoBorder = false;
+                st.revealing = null;
                 setTiledDecoration(st, false);
                 if (st.origOpacity !== undefined) w.opacity = st.origOpacity;
                 // Undo the all-desktops trick that kept other monitors visible.
@@ -4122,6 +4204,7 @@ function createDriver(env) {
                     onAllDesktops: st.w.onAllDesktops, desktops: st.w.desktops.map(function (d) { return d.id; }),
                     output: st.w.output ? st.w.output.name : null, workspace: st.desktop,
                     presel: engine.preselection(id),
+                    unseen: !!st.revealing,
                 };
                 out.windows[id].flags = engine.flagsOf(id);
             }

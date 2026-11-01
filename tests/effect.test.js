@@ -86,6 +86,16 @@ const LEFT = { x: 0, y: 0, width: 500, height: 900 };
 const RIGHT = { x: 500, y: 0, width: 500, height: 900 };
 const TOP = { x: 0, y: 0, width: 1000, height: 450 };
 
+Deno.test("a new window kept unseen until it is in its tile goes there without animating", () => {
+    const { fx, animations } = load();
+    const w = makeWindow("new", { x: 760, y: 376, width: 400, height: 328 }, { opacity: 0 });
+    retile(fx, w, w.geometry, { x: 965, y: 10, width: 945, height: 1060 });
+    assertEquals(animations.length, 0, "nothing to slide in from the middle of the screen");
+    w.opacity = 1;
+    retile(fx, w, w.geometry, { x: 10, y: 10, width: 945, height: 1060 });
+    assertEquals(animations.length, 1, "once shown it animates as any other");
+});
+
 Deno.test("one window changing tile cross-fades its contents", () => {
     const { fx, animations } = load();
     retile(fx, makeWindow("A", LEFT), TOP, LEFT);

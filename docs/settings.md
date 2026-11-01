@@ -40,6 +40,7 @@ System Settings › Window Management › KWin Scripts › HyprKwin › configur
 | Create workspaces on demand | – | on |
 | Drop a dragged window to re-tile | `dwindle:use_active_for_splits` (roughly) | on |
 | Tile dialogs and utility windows | `windowrule = tile, …` per app | off |
+| Show a new window only once it is in its tile, waiting at most | – | on, 400 ms |
 | Hide title bars on floating windows too | – | off |
 | Scratchpad margin | – | 40 px |
 | Dim behind the scratchpad | `decoration:dim_special` | off (needs the effect) |
@@ -127,6 +128,33 @@ with a rule (it then just flags itself in the taskbar, as in plain Plasma):
 ```
 focusonactivate off, class:^(discord|vesktop|org\.telegram\.desktop)$
 ```
+
+### New windows appear in their tile
+
+KWin shows a new window where it places it, in the middle of the screen at
+the app's own size, and only then does the window go to its tile: without
+help, every new window would flash up in the middle first. So a window that
+HyprKwin is going to tile stays unseen (at opacity 0) from the moment it
+appears until it has taken its tile, and then shows there, at its usual
+opacity. Its tile is asked for straight away, and with most apps that takes
+a frame or two.
+
+Some apps never take a tile's size exactly: a terminal that sizes itself in
+whole characters, a window whose minimum size is larger than its tile. Those
+show after the time set beside the setting (400 ms; 100 to 2000). A window
+also shows at once if it is floated, made full screen or maximized,
+minimized, sent to another workspace or monitor, or if HyprKwin stops.
+Windows HyprKwin does not tile (dialogs, fixed-size windows, a float rule,
+the scratchpad, windows opening full screen, maximized or minimized, or on
+a workspace that is not on screen) are never held back, nor are the windows
+already open when HyprKwin starts.
+
+The HyprKwin animations effect does not slide such a window from where KWin
+first put it: it goes to its tile at once, unseen. Plasma's own open
+animation (Scale, Glide, Fade) starts as the window appears, so most of it
+plays while the window is unseen and what is left of it plays in the tile.
+Turn this off with "Show a new window only once it is in its tile" on the
+Behaviour tab.
 
 ### Layouts
 

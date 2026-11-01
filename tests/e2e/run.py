@@ -4050,6 +4050,109 @@ def stage_previews_give_way_to_menus(sb):
     eq(len(sb.state()["stagePreviews"][0]["shown"]), 2, "and is back once it closes")
 
 
+# ---- new windows appear in their tile --------------------------------------
+
+
+def watch_opening(sb, title, until, timeout=6):
+    """(seconds, opacity, unseen, geometry) for a window as it opens, until
+    `until(sample)` holds."""
+    t0, out = time.time(), []
+    while time.time() - t0 < timeout:
+        s = sb.state()
+        w = [w for w in s["windows"].values() if w["caption"] == title]
+        if w:
+            g = w[0]["geometry"]
+            sample = (round(time.time() - t0, 2), w[0]["opacity"], w[0]["unseen"],
+                      (round(g["x"]), round(g["y"]), round(g["width"]), round(g["height"])))
+            if not out or out[-1][1:] != sample[1:]:
+                out.append(sample)
+            if until(sample):
+                return out
+    raise AssertionError("%s never got there: %r" % (title, out))
+
+
+@test(config={"HideUntilTiledTimeout": 2000})
+def new_windows_appear_in_their_tile(sb):
+    """KWin shows a new window where it places it, in the middle at the app's
+    size, before it takes its tile. A slow app takes a while to; until it
+    has, it is not seen, and then it is, in its tile."""
+    sb.spawn("A")
+    shots = sb.base / "shots"
+    shots.mkdir(exist_ok=True)
+    sb.spawn("B", extra=["--lag", "700"], color="#ff00ff", wait=False)
+    first = watch_opening(sb, "B", lambda x: True)
+    eq((first[0][1], first[0][2]), (0, True), "unseen as it appears: %r" % (first,))
+    eq(first[0][3] != RIGHT, True, "and not yet in its tile: %r" % (first,))
+    seen_early = None
+    if sb.opengl:
+        seen_early = red_x_range(sb, shots / "opening.png", rgb=(255, 0, 255))
+    samples = first + watch_opening(sb, "B", lambda x: x[1] == 1)
+    for t, opacity, unseen, geometry in samples:
+        if geometry != RIGHT:
+            eq(opacity, 0, "never seen out of its tile: %r" % (samples,))
+    eq(samples[-1][3], RIGHT, "seen in its tile")
+    eq(sb.state()["windows"][sb.window("B")["id"]]["unseen"], False, "and no longer held back")
+    if sb.opengl:
+        eq(seen_early, None, "nothing of it was on screen early")
+        x = red_x_range(sb, shots / "shown.png", rgb=(255, 0, 255))
+        eq(x is not None and x[0] >= 960, True, "drawn in its tile: %r" % (x,))
+
+
+@test
+def windows_that_are_not_tiled_show_at_once(sb):
+    sb.spawn("A")
+    sb.spawn("F", extra=["--fixed"], wait=False)
+    first = watch_opening(sb, "F", lambda x: True)
+    eq((first[0][1], first[0][2]), (1, False), "a fixed-size window floats, and shows at once")
+    sb.spawn("D", extra=["--dialog"], wait=False)
+    first = watch_opening(sb, "D dialog", lambda x: True)
+    eq((first[0][1], first[0][2]), (1, False), "so does a dialog")
+
+
+@test(config={"HideUntilTiledTimeout": 600})
+def a_window_slower_than_the_wait_shows_when_it_is_up(sb):
+    """An app that has not taken its tile when the longest wait is up is
+    shown anyway, where it is: never kept from you for longer."""
+    sb.spawn("A")
+    sb.spawn("B", extra=["--lag", "2500"], wait=False)
+    samples = watch_opening(sb, "B", lambda x: x[1] == 1)
+    eq(samples[0][1:3], (0, True), "held back at first: %r" % (samples,))
+    eq(0.3 <= samples[-1][0] - samples[0][0] <= 1.2, True, "for about the wait: %r" % (samples,))
+    sb.wait_for(lambda s: sb.geometry("B", s) == RIGHT, "B in its tile in the end", timeout=10)
+
+
+def opens_unseen_until_placed(sb, title, extra=("--lag", "500")):
+    sb.spawn(title, extra=list(extra), wait=False)
+    samples = watch_opening(sb, title, lambda x: x[1] == 1)
+    final = sb.geometry(title)
+    for t, opacity, unseen, geometry in samples:
+        if geometry != final:
+            eq(opacity, 0, "%s never seen out of its place: %r" % (title, samples))
+    eq(samples[0][1], 0, "%s unseen at first: %r" % (title, samples))
+    return final
+
+
+@test(config={"HideUntilTiledTimeout": 2000})
+def new_windows_joining_a_group_or_the_stage_appear_in_place(sb):
+    sb.spawn("A")
+    sb.spawn("B")
+    sb.invoke("groupAddNext")
+    g = opens_unseen_until_placed(sb, "C")
+    eq(len(sb.state()["groupBars"]), 1, "C joined the group")
+    eq((g[0], g[2]), (RIGHT[0], RIGHT[2]), "C in the group's tile: %r" % (g,))
+    sb.invoke("layoutStage")
+    s = opens_unseen_until_placed(sb, "D")
+    eq(s[0] > 200, True, "D appeared on the stage: %r" % (s,))
+
+
+@test(config={"HideUntilTiled": "false"})
+def new_windows_can_show_at_once(sb):
+    sb.spawn("A")
+    sb.spawn("B", extra=["--lag", "500"], wait=False)
+    first = watch_opening(sb, "B", lambda x: True)
+    eq((first[0][1], first[0][2]), (1, False), "the setting is off")
+
+
 # ---- after bspwm ------------------------------------------------------------
 
 

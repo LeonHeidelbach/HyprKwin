@@ -2,7 +2,18 @@
 
 ## Unreleased
 
+*HyprKwin animations changed in this release (new windows; see below).*
+
 ### Added
+
+- **New windows appear in their tile**, rather than first in the middle of
+  the screen at the app's own size and only then in their tile. A window
+  HyprKwin tiles stays unseen until it has taken its tile, or for 400 ms at
+  most (for apps that never take the size exactly); dialogs, floating,
+  full-screen and scratchpad windows show at once. On by default: "Show a
+  new window only once it is in its tile" on the Behaviour tab, with the
+  longest wait beside it. The animations effect lets such a window go to its
+  tile unseen instead of sliding it there from the middle.
 
 - **Preselection, after bspwm** (`node -p`, `node -o`): preselect a side of
   the focused window's tile, and the next window takes it, at a ratio you

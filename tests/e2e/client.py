@@ -54,6 +54,7 @@ def main():
     ap.add_argument("--activate-on", help="ask to be activated when this file appears (like a relaunched single-instance app)")
     ap.add_argument("--tool", action="store_true", help="a frameless tool window, the way launchers such as Albert open")
     ap.add_argument("--move-to", help="X,Y: move itself there a moment after opening, as Steam does (X11 only)")
+    ap.add_argument("--min-size", help="WxH: the smallest it can be (an app with a minimum size)")
     ap.add_argument("--lag", type=int, default=0, help="ms each repaint takes (an app slow to take a new size)")
     ap.add_argument("--move-times", type=int, default=1, help="how many times to repeat --move-to, 400 ms apart")
     args = ap.parse_args()
@@ -65,6 +66,9 @@ def main():
     win.resize(w, h)
     if args.fixed:
         win.setFixedSize(QSize(w, h))
+    if args.min_size:
+        mw, mh = (int(v) for v in args.min_size.split("x"))
+        win.setMinimumSize(QSize(mw, mh))
     if args.tool:
         win.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
     win.show()

@@ -330,6 +330,11 @@ class HyprKwinAnimations {
         if (!window.visible || window.minimized || window.deleted) return false;
         // The user is dragging it: it is already following the pointer.
         if (window.move || window.resize) return false;
+        // A new window HyprKwin keeps unseen (opacity 0) until it has taken
+        // its tile: it goes there at once, so it appears in its tile rather
+        // than sliding in, unseen, from where KWin first put it and still
+        // be under way when it is shown.
+        if (typeof window.opacity === "number" && window.opacity <= 0.001) return false;
         if (window.hkSuspendUntil && Date.now() < window.hkSuspendUntil) return false;
         if (window.caption === OVERLAY_TITLE) return this.animateOverlays;
         if (window.popupWindow || window.desktopWindow || window.dock) return false;
