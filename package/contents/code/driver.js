@@ -31,7 +31,9 @@ function hidesUntilTiled(w) {
 // an app that sizes itself in steps, or has a minimum size); or it has
 // waited as long as it may; or it is no longer a tile waiting for its place.
 // `w` is {tiled, fullScreen, maximized, minimized, geometry, placed,
-// opened (its geometry as it appeared), waited, timeout}.
+// opened (its geometry as it appeared), asked ([sizes] asked of it while it
+// waited: an answer to one of those is late, not a size of its own), waited,
+// timeout}.
 function revealReason(w) {
     if (!w.tiled) return "no longer tiled";
     if (w.fullScreen) return "full screen";
@@ -39,9 +41,10 @@ function revealReason(w) {
     if (w.minimized) return "minimized";
     var g = w.geometry, p = w.placed, o = w.opened;
     var near = function (a, b) { return Math.abs(a - b) <= 2; };
+    var sized = function (r) { return !!r && near(g.width, r.width) && near(g.height, r.height); };
     if (g && p && near(g.x, p.x) && near(g.y, p.y)) {
-        if (near(g.width, p.width) && near(g.height, p.height)) return "in its tile";
-        if (o && !(near(g.width, o.width) && near(g.height, o.height))) return "at a size of its own";
+        if (sized(p)) return "in its tile";
+        if (o && !sized(o) && !(w.asked || []).some(sized)) return "at a size of its own";
     }
     if (w.waited >= w.timeout) return "timed out";
     return null;
@@ -953,7 +956,12 @@ function createDriver(env) {
         opts = opts || {};
         if (!opts.cursor) opts.cursor = ws.cursorPos;
         engine.add(st.id, space, opts);
-        if (isMaximized(w)) w.setMaximize(false, false);
+        if (isMaximized(w)) {
+            // Maximized until the app takes the change; it is a tile
+            // already, and waits unseen for its place like any other.
+            st.unmaximizing = true;
+            w.setMaximize(false, false);
+        }
         setTiledDecoration(st, true);
         st.placed = null;
         log("tile", w.caption, "->", space);
@@ -1043,7 +1051,7 @@ function createDriver(env) {
         // Unseen until it is in its tile (applyWindowRules below applies
         // the opacity, before KWin draws a frame of it).
         if (hidesUntilTiled({ enabled: cfg.hideUntilTiled, initial: initial, tiled: isTiled(st), special: !!st.special,
-                              pinned: st.pinned, fullScreen: w.fullScreen, maximized: isMaximized(w),
+                              pinned: st.pinned, fullScreen: w.fullScreen, maximized: isMaximized(w) && !st.unmaximizing,
                               minimized: w.minimized, shown: kwinVisible(w) && onCurrentActivity(w) })) {
             hideUntilTiled(st);
         }
@@ -1096,19 +1104,33 @@ function createDriver(env) {
     // ---- new windows wait unseen until they are in their tile -------------
 
     function hideUntilTiled(st) {
-        st.revealing = { since: Date.now(), opened: copyRect(st.w.frameGeometry) };
+        var waiting = { since: Date.now(), opened: copyRect(st.w.frameGeometry), asked: [],
+                        timeout: cfg.hideUntilTiledTimeout };
+        st.revealing = waiting;
         log("keeping", st.w.caption, "unseen until it is in its tile");
-        if (env.after) env.after(cfg.hideUntilTiledTimeout, function () { checkReveal(st); });
+        // Shown when the wait is up, whatever else: no window is kept from
+        // you for longer, even if nothing else would show it.
+        if (env.after) env.after(waiting.timeout, function () {
+            if (st.revealing === waiting && tracked[st.id] === st) reveal(st, "the wait is up");
+        });
     }
 
     function checkReveal(st) {
         if (!st.revealing || tracked[st.id] !== st) return;
         var w = st.w;
-        var why = revealReason({ tiled: isTiled(st), fullScreen: w.fullScreen, maximized: isMaximized(w),
+        var why = revealReason({ tiled: isTiled(st), fullScreen: w.fullScreen, maximized: isMaximized(w) && !st.unmaximizing,
                                  minimized: w.minimized, geometry: copyRect(w.frameGeometry), placed: st.placed,
-                                 opened: st.revealing.opened,
-                                 waited: Date.now() - st.revealing.since, timeout: cfg.hideUntilTiledTimeout });
+                                 opened: st.revealing.opened, asked: st.revealing.asked,
+                                 waited: Date.now() - st.revealing.since, timeout: st.revealing.timeout });
         if (why) reveal(st, why);
+    }
+
+    // On the next turn of the event loop: the window's frame geometry change
+    // is seen by every other listener first (the animations effect, which
+    // leaves a window at opacity 0 alone, so it does not slide it in).
+    function checkRevealSoon(st) {
+        if (env.after) env.after(0, function () { checkReveal(st); });
+        else checkReveal(st);
     }
 
     function reveal(st, why) {
@@ -1283,7 +1305,7 @@ function createDriver(env) {
         if (w.demandsAttentionChanged) listen(w.demandsAttentionChanged, function () { onDemandsAttention(st); }, st);
         listen(w.activitiesChanged, schedule, st);
         listen(w.fullScreenChanged, function () { st.placed = null; checkReveal(st); applyOpacity(st); schedule(); }, st);
-        listen(w.maximizedChanged, function () { st.placed = null; checkReveal(st); schedule(); }, st);
+        listen(w.maximizedChanged, function () { st.unmaximizing = false; st.placed = null; checkReveal(st); schedule(); }, st);
         // Plasma's quick tiling / tile editor would fight our layout: take
         // tiled windows back from KWin's tiles and re-apply our geometry.
         if (w.tileChanged) listen(w.tileChanged, function () { onKWinTile(st); }, st);
@@ -1417,7 +1439,7 @@ function createDriver(env) {
             if (!Object.keys(releasing).length) playQueued();
         }
         scheduleDecorations();
-        if (st.revealing) checkReveal(st);
+        if (st.revealing) checkRevealSoon(st);
         if (syncing) return;
         // Even mid-drag: the windows beside the one being dragged are asked
         // for a new size at every step, and answer late.
@@ -1630,6 +1652,7 @@ function createDriver(env) {
             return;
         }
         st.hold = null;
+        if (st.revealing && st.placed) st.revealing.asked.push({ width: st.placed.width, height: st.placed.height });
         st.placed = r;
         if (!shown) st.placedHidden = true;
         noteSent(st, r);
@@ -3924,6 +3947,10 @@ function createDriver(env) {
             var st = tracked[id];
             setTiledDecoration(st, isTiled(st));
             st.placed = null;
+        }
+        // Turned off: nothing waits any more.
+        if (!cfg.hideUntilTiled) {
+            for (var rid in tracked) reveal(tracked[rid], "the setting is off");
         }
         applyAllOpacity();
         relayout();

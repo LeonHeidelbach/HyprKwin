@@ -55,6 +55,9 @@ Deno.test("a window waiting unseen shows once it is in its tile, or after the ti
                  "answered with a size of its own (a terminal's whole characters)");
     assertEquals(D.revealReason({ ...waiting, placed: { x: 760, y: 376, width: 945, height: 1060 } }), null,
                  "its corner happens to be the tile's, but it has not answered");
+    assertEquals(D.revealReason({ ...waiting, geometry: { x: 965, y: 10, width: 945, height: 700 },
+                                  asked: [{ width: 945, height: 700 }] }), null,
+                 "a late answer to an earlier tile (the layout changed while it waited) is not a size of its own");
     assertEquals(D.revealReason({ ...waiting, waited: 400 }), "timed out", "an app that does not answer in time");
     assertEquals(D.revealReason({ ...waiting, placed: null }), null, "nothing asked of it yet");
 });

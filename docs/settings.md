@@ -153,8 +153,10 @@ The HyprKwin animations effect does not slide such a window from where KWin
 first put it: it goes to its tile at once, unseen. Plasma's own open
 animation (Scale, Glide, Fade) starts as the window appears, so most of it
 plays while the window is unseen and what is left of it plays in the tile.
-Turn this off with "Show a new window only once it is in its tile" on the
-Behaviour tab.
+While it waits, the window already has the keyboard (and would take a
+click where KWin put it), as an unseen window still does: one reason to keep
+the wait short. Turn this off with "Show a new window only once it is in its
+tile" on the Behaviour tab.
 
 ### Layouts
 

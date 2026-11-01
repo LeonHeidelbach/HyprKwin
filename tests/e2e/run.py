@@ -4145,6 +4145,40 @@ def new_windows_joining_a_group_or_the_stage_appear_in_place(sb):
     eq(s[0] > 200, True, "D appeared on the stage: %r" % (s,))
 
 
+@test(config={"HideUntilTiledTimeout": 2000})
+def a_window_opening_maximized_appears_in_its_tile(sb):
+    """A browser restoring its maximized state: HyprKwin un-maximizes it to
+    tile it, and it waits unseen for that too."""
+    sb.spawn("A")
+    final = opens_unseen_until_placed(sb, "B", extra=("--maximized", "--lag", "200"))
+    eq(final, RIGHT, "in its tile")
+
+
+@test(config={"HideUntilTiledTimeout": 2000})
+def hyprkwin_stopping_shows_a_window_it_held_back(sb):
+    sb.spawn("A")
+    sb.spawn("B", extra=["--lag", "3000"], wait=False)
+    watch_opening(sb, "B", lambda x: x[2])
+    sb.reload_script()                      # the old one stops, as for an upgrade
+    s = sb.wait_for(lambda s: any(w["caption"] == "B" for w in s["windows"].values()), "B tracked again")
+    eq((sb.window("B", s)["opacity"], sb.window("B", s)["unseen"]), (1, False), "B shown again")
+
+
+@test(effect=True, effect_config={"Duration": 3000, "Curve": 4}, config={"HideUntilTiledTimeout": 2000})
+def a_new_window_does_not_slide_in_from_where_kwin_put_it(sb):
+    """With the animations effect, a slow (3 s) animation would still be
+    under way when the window is shown, had the effect slid it unseen from
+    the middle of the screen to its tile: it is drawn in its tile at once."""
+    shots = sb.base / "shots"
+    shots.mkdir(exist_ok=True)
+    sb.spawn("A")
+    sb.settle(3.5)
+    sb.spawn("B", extra=["--lag", "300"], color="#ff00ff", wait=False)
+    watch_opening(sb, "B", lambda x: x[1] == 1)
+    x = red_x_range(sb, shots / "shown.png", rgb=(255, 0, 255))
+    eq(x is not None and x[0] >= 960, True, "drawn in its tile as it is shown: %r" % (x,))
+
+
 @test(config={"HideUntilTiled": "false"})
 def new_windows_can_show_at_once(sb):
     sb.spawn("A")
