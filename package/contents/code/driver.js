@@ -775,6 +775,7 @@ function createDriver(env) {
             preselFeedback: bool(rc("PreselFeedback", true), true),
             preselFeedbackColor: colour(rc("PreselFeedbackColor", "#27293b"), "#27293b"),
             preselFeedbackOpacity: Math.max(0.05, Math.min(1, num(rc("PreselFeedbackOpacity", 80), 80) / 100)),
+            markedBorderColor: colour(rc("MarkedBorderColor", "#e0af68"), "#e0af68"),
             // While zoomed in, Escape zooms back out (it is taken from apps
             // for as long as the zoom lasts).
             zoomEscape: bool(rc("ZoomEscape", false), false),
@@ -1867,7 +1868,10 @@ function createDriver(env) {
                 var g = engine.groupOf(st.id);
                 if (g && g.wins[g.active] !== st.id) return;
                 var isActive = w === active;
-                if (!isActive && !cfg.showInactiveBorders) return;
+                // A marked window is outlined in the marked colour while
+                // another one has the focus.
+                var marked = !isActive && engine.flag(st.id, "marked");
+                if (!isActive && !cfg.showInactiveBorders && !marked) return;
                 // A window held back mid-slide is drawn where it is going;
                 // the effect slides its border there with the divider.
                 var r = st.hold || w.frameGeometry, b = cfg.borderSize;
@@ -1876,6 +1880,7 @@ function createDriver(env) {
                 // borders need one set each or they would overwrite it.
                 var outer = { id: isActive ? "focus-border" : st.id, x: r.x - b, y: r.y - b,
                               width: r.width + 2 * b, height: r.height + 2 * b, active: isActive };
+                outer.marked = marked;
                 if (!usableRect(outer) || r.width < MIN_DECORATED_SIZE || r.height < MIN_DECORATED_SIZE) {
                     log("skipping border for", w.caption, JSON.stringify(outer));
                     return;
@@ -3537,6 +3542,28 @@ function createDriver(env) {
             relayout();
         },
         equalize: function () { treeAction("Equalize", function (id) { return engine.equalize(id); }); },
+        moveToPreselection: function () {
+            var st = active();
+            if (!st || !isTiled(st)) return;
+            var space = engine.spaceOf(st.id);
+            if (!dwindleOnly(space, "Preselection") || !engine.moveToPreselection(st.id, space)) return;
+            syncDesktop(st);
+            relayout();
+        },
+        toggleMarked: function () {
+            var st = active();
+            if (!st) return;
+            announce(engine.toggleFlag(st.id, "marked") ? "Marked" : "Unmarked");
+            scheduleDecorations();
+        },
+        moveMarkedToPreselection: function () {
+            var space = currentSpace();
+            var id = space ? engine.newestMarked(space) : null;
+            if (!id || !dwindleOnly(space, "Preselection") || !engine.moveToPreselection(id, space)) return;
+            engine.setFlag(id, "marked", false);
+            if (tracked[id]) syncDesktop(tracked[id]);
+            relayout();
+        },
     };
     for (var r = 1; r <= 9; r++) {
         (function (n) {
@@ -3951,6 +3978,7 @@ function createDriver(env) {
                     output: st.w.output ? st.w.output.name : null, workspace: st.desktop,
                     presel: engine.preselection(id),
                 };
+                out.windows[id].flags = engine.flagsOf(id);
             }
             return out;
         },

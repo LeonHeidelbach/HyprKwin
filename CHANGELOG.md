@@ -14,6 +14,10 @@
 - **Balance and equalize** (bspwm's `-B` and `--equalize`): every window on
   the workspace the same area, or the splits around the window back to the
   default ratio.
+- **Moving into preselections, and marks** (bspwm's `node -n` and `marked`):
+  the focused window, or the newest marked one, moves into the newest
+  preselection on the workspace. Marked windows have a border of their own
+  colour.
 
 ### Fixed
 

@@ -57,6 +57,8 @@
         <entry name="PreselFeedback" type="Bool"><default>true</default></entry>
         <entry name="PreselFeedbackColor" type="Color"><default>#27293b</default></entry>
         <entry name="PreselFeedbackOpacity" type="Int"><default>80</default><min>5</min><max>100</max></entry>
+        <!-- The border of a marked window that does not have the focus. -->
+        <entry name="MarkedBorderColor" type="Color"><default>#e0af68</default></entry>
         <!-- Behaviour -->
         <entry name="FocusFollowsMouse" type="Bool"><default>false</default></entry>
         <entry name="AutoCreateDesktops" type="Bool"><default>true</default></entry>

@@ -117,6 +117,9 @@ function shortcutList() {
         ["preselectRatio9", "Preselection ratio 0.9", ""],
         ["preselectCancel", "Cancel this window's preselection", ""],
         ["preselectCancelAll", "Cancel every preselection on the workspace", ""],
+        ["moveToPreselection", "Move window into the newest preselection", ""],
+        ["toggleMarked", "Mark / unmark window", ""],
+        ["moveMarkedToPreselection", "Move the newest marked window into the newest preselection", ""],
         ["balance", "Balance the workspace: every window the same area", ""],
         ["equalize", "Reset the splits around the window to the default ratio", ""],
 

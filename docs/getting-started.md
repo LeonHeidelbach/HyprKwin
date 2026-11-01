@@ -222,6 +222,7 @@ table below shows the US keys.
 | `Meta+Alt+1…5` | Switch to group window 1–5 |
 | unbound | Pick a layout directly, previous layout, move the master area back, focus next/previous window in the layout, swap the two sides of the split, move window in direction, always float / tile / open in the scratchpad this app (a rule, as from the window menu), reload & retile |
 | unbound | After bspwm (see [Preselection and the tree](settings.md#preselection-and-the-tree-after-bspwm)): preselect a side (`preselectLeft` / `Down` / `Up` / `Right`), its ratio (`preselectRatio1` … `9`), cancel it (`preselectCancel`, `preselectCancelAll`) |
+| unbound | Move window into the newest preselection (`moveToPreselection`), mark / unmark window (`toggleMarked`), move the newest marked window into the newest preselection (`moveMarkedToPreselection`) |
 | unbound | Balance the workspace (`balance`), reset the splits around the window (`equalize`) |
 
 Mouse: hold Meta and drag with the left button to move a window (drop it on

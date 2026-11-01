@@ -241,6 +241,62 @@ Deno.test("presel: a minimised window's preselection is neither drawn nor used",
     assertEquals(e.preselection("b").dir, "down", "a hidden window is not the focused tile");
 });
 
+// ---- moving into preselections, marks ---------------------------------------
+
+Deno.test("moveToPreselection: into the newest preselection on the workspace, which is used up", () => {
+    const e = eng();
+    open(e, ["a", "b", "c"]);                // a | (b / c)
+    e.preselect("a", "up");
+    e.preselect("b", "right");
+    assertEquals(e.newestPreselection(S, "c"), "b");
+    assertEquals(e.moveToPreselection("c", S), true);
+    assertEquals(e.dump(S), { dir: "h", ratio: 0.5, a: "a", b: { dir: "h", ratio: 0.5, a: "b", b: "c" } });
+    assertEquals(e.preselection("b"), null);
+    assertEquals(e.preselection("a").dir, "up", "the older one stays");
+    assertEquals(e.moveToPreselection("b", S), true);
+    assertEquals(e.dump(S).a, { dir: "v", ratio: 0.5, a: "b", b: "a" });
+    assertEquals(e.moveToPreselection("c", S), false, "none left");
+});
+
+Deno.test("moveToPreselection: not into its own tile, unless it shares it in a group", () => {
+    const e = eng();
+    open(e, ["a", "b"]);
+    e.preselect("b", "down");
+    assertEquals(e.newestPreselection(S, "b"), null);
+    assertEquals(e.moveToPreselection("b", S), false);
+    e.toggleGroup("b");
+    e.joinGroup("a", "b");                   // [b, a]
+    assertEquals(e.moveToPreselection("a", S), true, "out of the group, under it");
+    assertEquals(e.dump(S), { dir: "v", ratio: 0.5, a: { group: ["b"], active: 0 }, b: "a" });
+});
+
+Deno.test("moveToPreselection: dwindle only", () => {
+    const e = eng();
+    open(e, ["a", "b"]);
+    e.preselect("a", "down");
+    e.setLayout(S, "monocle");
+    assertEquals(e.moveToPreselection("b", S), false);
+});
+
+Deno.test("marks: numbered as they are made, so the newest is known", () => {
+    const e = eng();
+    open(e, ["a", "b", "c"]);
+    open(e, ["x"], T);
+    assertEquals(e.toggleFlag("b", "marked"), true);
+    e.toggleFlag("a", "marked");
+    e.toggleFlag("x", "marked");
+    assertEquals(e.newestMarked(S), "a");
+    e.setFlag("a", "marked", true);
+    assertEquals(e.newestMarked(S), "a", "marking again keeps its place");
+    e.toggleFlag("a", "marked");
+    assertEquals(e.newestMarked(S), "b");
+    e.detach("b");
+    assertEquals(e.newestMarked(S), null, "only tiled windows");
+    assertEquals(e.flag("b", "marked"), true, "but the flag stays with the window");
+    e.remove("b");
+    assertEquals(e.flag("b", "marked"), false, "until it closes");
+});
+
 // ---- balance, equalize --------------------------------------------------------
 
 Deno.test("balance: every window gets the same area", () => {

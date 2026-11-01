@@ -29,6 +29,7 @@ System Settings › Window Management › KWin Scripts › HyprKwin › configur
 | Group tab bar height | `group:groupbar:height` | 22 |
 | Show where a preselected window will go | bspwm's `presel_feedback` | on |
 | Preselection colour / opacity | bspwm's `presel_feedback_color` | #27293b, 80 % |
+| Marked window border colour | – | #e0af68 |
 | Focus follows mouse | `input:follow_mouse = 1` | off |
 | Start each session on workspace 1 | – | on |
 | Every monitor has its own workspaces | one workspace per monitor | on |
@@ -247,6 +248,15 @@ something in dwindle: elsewhere the actions say so and do nothing, and one
 made earlier waits, unseen, until the workspace is back in dwindle. They
 are not kept from one session to the next, as where windows sit in the tree
 is not.
+
+**Moving into a preselection** (`node -n`). `moveToPreselection` moves the
+focused window into the newest preselection on the workspace, using it up.
+`toggleMarked` marks the focused window (bspwm's `marked` flag; while
+another window has the focus a marked one has a border in the marked
+colour, with the coloured border focus indicator), and
+`moveMarkedToPreselection` moves the newest marked window on the workspace
+into the newest preselection and unmarks it: `node newest.marked.local -n
+newest.!automatic.local`. A floating window stays where it is, as in bspwm.
 
 **Balance and equalize.** `balance` gives every window on the workspace the
 same area (bspwm's `node @/ -B`): each split gives its first side as many

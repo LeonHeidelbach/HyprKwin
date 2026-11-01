@@ -4161,6 +4161,32 @@ def preselection_needs_dwindle(sb):
 
 
 @test
+def windows_move_into_preselections(sb):
+    """bspwm's node -n: the focused window, or the newest marked one, moves
+    into the newest preselection on the workspace."""
+    three(sb)                                # A | (B / C), C focused
+    sb.invoke("focusLeft")
+    sb.invoke("preselectLeft")               # on A
+    sb.invoke("focusRight")                  # back to C
+    sb.invoke("moveToPreselection")
+    s = sb.state()
+    eq(sb.geometry("C", s)[0], 10, "C went to the left of A")
+    eq(sb.geometry("B", s), RIGHT, "B has the right half to itself")
+    eq(s["presels"], [], "used up")
+    sb.invoke("toggleMarked")                # C
+    eq(sb.window("C")["flags"]["marked"], True, "C marked")
+    sb.invoke("focusRight")                  # A
+    sb.invoke("focusRight")                  # B
+    sb.invoke("preselectDown")
+    sb.invoke("moveMarkedToPreselection")
+    s = sb.state()
+    eq(sb.geometry("C", s), C3, "C under B")
+    eq(sb.geometry("B", s), B3, "B on top")
+    eq(sb.window("C", s)["flags"]["marked"], False, "and unmarked")
+    eq(s["active"], sb.window("B", s)["id"], "the focus stays")
+
+
+@test
 def balance_and_equalize(sb):
     for t in "ABCD":
         sb.spawn(t)                          # A | (B / (C | D))

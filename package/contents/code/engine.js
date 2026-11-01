@@ -146,6 +146,8 @@ function createEngine(userConfig) {
     var masterOpts = {}; // space -> {factor, count, orientation}
     var zooms = {};      // space -> the node zoomed into (dwindle only)
     var stageSets = {};  // space -> [[window id, ...]]: windows sharing the stage
+    var flags = {};      // window id -> {marked: seq or 0}
+    var flagSeq = 0;     // marked windows are numbered, so the newest is known
     var preselSeq = 0;   // preselections are numbered, so the newest is known
     var isVisible = function () { return true; };
     var nextNodeId = 1;
@@ -606,6 +608,7 @@ function createEngine(userConfig) {
     function forget(id) {
         detach(id);
         delete pseudoSizes[id];
+        delete flags[id];
         var i = focusOrder.indexOf(id);
         if (i >= 0) focusOrder.splice(i, 1);
     }
@@ -654,8 +657,11 @@ function createEngine(userConfig) {
     // way, instead of the automatic way, and takes the preselected side. Its
     // ratio is the first (left or top) side's share, as bspwm's split_ratio
     // is; until one is set it is the default split.
+    // Flags (bspwm's marked, locked and private) belong to the window,
+    // whatever tile it is in.
 
     var SIDES = ["left", "right", "up", "down"];
+    var FLAGS = ["marked"];
 
     function preselShare(p) {
         var r = p.ratio === null || p.ratio === undefined ? defaultShare() : p.ratio;
@@ -669,6 +675,21 @@ function createEngine(userConfig) {
         if (p.dir === "right") return rect(r.x + r.width * s, r.y, r.width * (1 - s), r.height);
         if (p.dir === "up") return rect(r.x, r.y, r.width, r.height * s);
         return rect(r.x, r.y + r.height * s, r.width, r.height * (1 - s));
+    }
+
+    function flagOf(id, name) {
+        return !!(flags[id] && flags[id][name]);
+    }
+
+    // The tile with the newest preselection in a space, leaving out the
+    // window's own tile when it is alone in it (it cannot move beside itself).
+    function newestPreselLeaf(space, exclude) {
+        var own = exclude ? leafOf[exclude] : null, best = null;
+        leaves(roots[space]).forEach(function (l) {
+            if (!l.presel || !shown(l) || (l === own && l.wins.length < 2)) return;
+            if (!best || l.presel.seq > best.presel.seq) best = l;
+        });
+        return best;
     }
 
     function copyOpts(opts) {
@@ -1213,6 +1234,24 @@ function createEngine(userConfig) {
             });
         },
 
+        // The window whose tile has the newest preselection in a space
+        // (leaving out `exclude`'s own tile when it is alone there), or null.
+        newestPreselection: function (space, exclude) {
+            var leaf = newestPreselLeaf(space, exclude);
+            return leaf ? leaf.wins[leaf.active] : null;
+        },
+
+        // Move a window into the newest preselection of a space, which it
+        // uses up (bspwm node -n). False if there is none to move into.
+        moveToPreselection: function (id, space) {
+            if (!space || !roots[space] || modeOf(space) !== "dwindle") return false;
+            var target = newestPreselLeaf(space, id);
+            if (!target) return false;
+            if (leafOf[id]) detach(id);
+            insert(id, space, { presel: target });
+            return true;
+        },
+
         // Give every split in the space the share that leaves each window the
         // same area (bspwm node @/ -B): the first side gets as many parts as
         // it shows tiles. A group counts once; a hidden side keeps its split.
@@ -1251,6 +1290,35 @@ function createEngine(userConfig) {
             return changed;
         },
 
+        // ---- flags (bspwm's marked) ----------------------------------------
+
+        flag: function (id, name) { return flagOf(id, name); },
+
+        setFlag: function (id, name, on) {
+            if (FLAGS.indexOf(name) < 0) return false;
+            var f = flags[id] || (flags[id] = {});
+            if (name === "marked") f.marked = on ? (f.marked || ++flagSeq) : 0;
+            else f[name] = !!on;
+            return !!on;
+        },
+
+        toggleFlag: function (id, name) {
+            return api.setFlag(id, name, !flagOf(id, name));
+        },
+
+        flagsOf: function (id) {
+            return { marked: flagOf(id, "marked") };
+        },
+
+        // The tiled window in a space marked most recently, or null.
+        newestMarked: function (space) {
+            var best = null;
+            for (var id in flags) {
+                if (!flags[id].marked || spaceOf[id] !== space || !leafOf[id] || !isVisible(id)) continue;
+                if (!best || flags[id].marked > flags[best].marked) best = id;
+            }
+            return best;
+        },
 
         // ---- groups -------------------------------------------------------
 

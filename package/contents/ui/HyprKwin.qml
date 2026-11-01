@@ -702,6 +702,8 @@ Item {
             border.inactiveFromTheme = cfg.inactiveBorderSource === 0;
             border.activeColor = cfg.activeBorderColor || "#33ccff";
             border.inactiveColor = cfg.inactiveBorderColor || "#595959";
+            border.marked = !!entry.marked;
+            border.markedColor = cfg.markedBorderColor || "#e0af68";
             border.revision = revision;
         }
         dropMissing(borderObjects, seen);

@@ -12,6 +12,9 @@ Item {
     property bool inactiveFromTheme: true
     property color activeColor: "#33ccff"
     property color inactiveColor: "#595959"
+    // A marked window while another one has the focus (bspwm's marked flag).
+    property bool marked: false
+    property color markedColor: "#e0af68"
     // col.active_border as a gradient: activeColor to activeColor2.
     property bool activeGradient: false
     property color activeColor2: "#00ff99"
@@ -29,6 +32,7 @@ Item {
     // dimmed text colour for the rest, so both follow the colour scheme.
     readonly property color borderColor: active
         ? (activeFromTheme ? accent.Kirigami.Theme.highlightColor : activeColor)
+        : marked ? markedColor
         : (inactiveFromTheme ? accent.Kirigami.Theme.disabledTextColor : inactiveColor)
     readonly property color borderColor2: active && activeGradient ? activeColor2 : borderColor
     readonly property rect outer: frame ? Qt.rect(frame.x, frame.y, frame.width, frame.height) : Qt.rect(0, 0, 0, 0)
