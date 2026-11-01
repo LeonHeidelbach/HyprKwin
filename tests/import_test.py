@@ -181,6 +181,7 @@ bind = $mod SHIFT, 3, movetoworkspace, 3
 bind = $mod, S, togglespecialworkspace
 bind = $mod, M, layoutmsg, swapwithmaster
 bind = $mod CTRL SHIFT, right, movewindow, mon:r
+bind = $mod ALT, L, layoutmsg, preselect l
 """)
         self.assertEqual(plan["binds"], [
             ("close", "Meta+Q", "hyprland.conf:3"),
@@ -193,6 +194,7 @@ bind = $mod CTRL SHIFT, right, movewindow, mon:r
             ("toggleSpecial", "Meta+S", "hyprland.conf:10"),
             ("masterSwap", "Meta+M", "hyprland.conf:11"),
             ("windowToMonitorRight", "Meta+Ctrl+Shift+Right", "hyprland.conf:12"),
+            ("preselectLeft", "Meta+Alt+L", "hyprland.conf:13"),
         ])
 
     def test_named_scratchpads_take_the_numbered_slots(self):

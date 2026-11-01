@@ -1,0 +1,243 @@
+// Unit tests for the engine's features after bspwm: preselections, and what
+// else bspwm users miss. Run with: deno test tests/
+import { assertEquals, assert } from "./assert.js";
+
+const src = Deno.readTextFileSync(new URL("../package/contents/code/engine.js", import.meta.url));
+const E = new Function(src + "\nreturn { createEngine };")();
+
+const AREA = { x: 0, y: 0, width: 1920, height: 1080 };
+const S = "d1|out1";
+const T = "d2|out1";
+
+function eng(cfg) {
+    const e = E.createEngine(Object.assign({ gapsIn: 0, gapsOut: { left: 0, top: 0, right: 0, bottom: 0 } }, cfg || {}));
+    e.setArea(S, AREA);
+    e.setArea(T, AREA);
+    return e;
+}
+
+// Windows opened one after another, each focused as it opens.
+function open(e, ids, space) {
+    for (const id of ids) {
+        e.add(id, space || S);
+        e.focused(id);
+    }
+}
+
+// ---- preselection -----------------------------------------------------------
+
+Deno.test("presel: the next window takes the preselected side of the focused tile", () => {
+    for (const [side, dump, bx] of [
+        ["right", { dir: "h", ratio: 0.5, a: "a", b: "b" }, 960],
+        ["left", { dir: "h", ratio: 0.5, a: "b", b: "a" }, 0],
+    ]) {
+        const e = eng();
+        open(e, ["a"]);
+        assertEquals(e.preselect("a", side), { dir: side, ratio: 0.5, seq: 1 });
+        e.add("b", S);
+        assertEquals(e.dump(S), dump, side);
+        assertEquals(e.layout(S).windows.b.x, bx, side);
+        assertEquals(e.preselection("a"), null, "used up");
+    }
+});
+
+Deno.test("presel: up and down stack the windows even on a wide tile", () => {
+    const e = eng();
+    open(e, ["a"]);
+    e.preselect("a", "down");
+    e.add("b", S);
+    assertEquals(e.dump(S), { dir: "v", ratio: 0.5, a: "a", b: "b" });
+    e.focused("b");
+    e.preselect("b", "up");
+    e.add("c", S);
+    assertEquals(e.dump(S).b, { dir: "v", ratio: 0.5, a: "c", b: "b" });
+    const l = e.layout(S);
+    assertEquals(l.windows.c, { x: 0, y: 540, width: 1920, height: 270 });
+});
+
+Deno.test("presel: the ratio is the first (left or top) side's share, as in bspwm", () => {
+    let e = eng();
+    open(e, ["a"]);
+    e.preselect("a", "right");
+    e.preselectRatio("a", 0.3);
+    e.add("b", S);
+    let l = e.layout(S);
+    assertEquals(l.windows.a.width, 576, "the window that was there keeps 30%");
+    assertEquals(l.windows.b.width, 1344, "and the new one gets 70%");
+    e = eng();
+    open(e, ["a"]);
+    e.preselect("a", "left");
+    e.preselectRatio("a", 0.3);
+    e.add("b", S);
+    l = e.layout(S);
+    assertEquals(l.windows.b, { x: 0, y: 0, width: 576, height: 1080 }, "the new window takes the first 30%");
+});
+
+Deno.test("presel: the default ratio is the configured split", () => {
+    const e = eng({ splitRatio: 1.2 });
+    open(e, ["a"]);
+    assertEquals(e.preselect("a", "down").ratio, 0.6);
+    e.add("b", S);
+    assertEquals(e.dump(S).ratio, 0.6);
+});
+
+Deno.test("presel: a ratio with no preselection makes one to the right", () => {
+    const e = eng();
+    open(e, ["a"]);
+    assertEquals(e.preselectRatio("a", 0.7), { dir: "right", ratio: 0.7, seq: 1 });
+    assertEquals(e.preselect("a", "down").ratio, 0.7, "a new side keeps the ratio");
+    e.add("b", S);
+    assertEquals(e.dump(S), { dir: "v", ratio: 0.7, a: "a", b: "b" });
+});
+
+Deno.test("presel: the same side again cancels it; another side replaces it", () => {
+    const e = eng();
+    open(e, ["a"]);
+    e.preselect("a", "left");
+    assertEquals(e.preselect("a", "left"), null, "cancelled");
+    assertEquals(e.preselection("a"), null);
+    e.preselect("a", "left");
+    assertEquals(e.preselect("a", "up").dir, "up", "replaced");
+    e.add("b", S);
+    assertEquals(e.dump(S), { dir: "v", ratio: 0.5, a: "b", b: "a" });
+    assertEquals(e.cancelPreselection("a"), false, "nothing left to cancel");
+});
+
+Deno.test("presel: only the focused window's preselection is used; otherwise the automatic split", () => {
+    const e = eng();
+    open(e, ["a", "b"]);                     // a | b, b focused
+    e.preselect("a", "down");
+    e.add("c", S);
+    assertEquals(e.dump(S), { dir: "h", ratio: 0.5, a: "a", b: { dir: "v", ratio: 0.5, a: "b", b: "c" } });
+    assertEquals(e.preselection("a").dir, "down", "a keeps its preselection");
+    e.focused("a");
+    e.add("d", S);
+    assertEquals(e.dump(S).a, { dir: "v", ratio: 0.5, a: "a", b: "d" });
+});
+
+Deno.test("presel: several windows can each have one, and cancelling all clears the space", () => {
+    const e = eng();
+    open(e, ["a", "b", "c"]);
+    open(e, ["x"], T);
+    e.preselect("a", "up");
+    e.preselect("c", "left");
+    e.preselect("x", "right");
+    assertEquals(e.preselections(S).map((p) => [p.id, p.dir]), [["a", "up"], ["c", "left"]]);
+    assertEquals(e.cancelPreselections(S), true);
+    assertEquals(e.preselections(S), []);
+    assertEquals(e.preselection("x").dir, "right", "another workspace keeps its own");
+    assertEquals(e.cancelPreselections(S), false);
+});
+
+Deno.test("presel: goes with its window when it closes, floats or leaves the workspace", () => {
+    let e = eng();
+    open(e, ["a", "b"]);
+    e.preselect("b", "down");
+    e.remove("b");
+    assertEquals(e.preselections(S), [], "closed");
+    e = eng();
+    open(e, ["a", "b"]);
+    e.preselect("b", "down");
+    e.detach("b");                           // floated
+    assertEquals(e.preselections(S), []);
+    e.add("b", S);
+    assertEquals(e.preselection("b"), null, "not back when it tiles again");
+    e = eng();
+    open(e, ["a", "b"]);
+    e.preselect("b", "down");
+    e.moveToSpace("b", T, {});
+    assertEquals(e.preselections(S), []);
+    assertEquals(e.preselections(T), [], "nor does it travel");
+});
+
+Deno.test("presel: belongs to a group's tile, so a window leaving the group leaves it", () => {
+    const e = eng();
+    open(e, ["a", "b"]);
+    e.toggleGroup("b");
+    e.joinGroup("a", "b");                   // one tile: [b, a], a in front
+    e.preselect("a", "right");
+    assertEquals(e.preselection("b").dir, "right", "every window in the tile shares it");
+    e.leaveGroup("b");
+    assertEquals(e.preselection("a").dir, "right", "the tile keeps it");
+    assertEquals(e.preselection("b"), null);
+    e.remove("a");
+    assertEquals(e.preselections(S), [], "and it goes with the tile");
+});
+
+Deno.test("presel: swapping windows carries their preselections", () => {
+    const e = eng();
+    open(e, ["a", "b"]);
+    e.preselect("a", "down");
+    e.swap("a", "b");
+    assertEquals(e.preselection("a").dir, "down");
+    assertEquals(e.layout(S).presels.map((p) => [p.id, p.rect.x]), [["a", 960]]);
+});
+
+Deno.test("presel: a window sent to another workspace goes into the preselection focused there", () => {
+    const e = eng();
+    open(e, ["x", "y"], T);
+    e.focused("x");
+    e.preselect("x", "left");
+    open(e, ["a", "b"]);
+    e.moveToSpace("b", T, {});
+    assertEquals(e.dump(T), { dir: "h", ratio: 0.5, a: { dir: "h", ratio: 0.5, a: "b", b: "x" }, b: "y" });
+    assertEquals(e.preselection("x"), null, "used up");
+});
+
+Deno.test("presel: an explicit place (a drop, a group rule) leaves the preselection alone", () => {
+    const e = eng();
+    open(e, ["a", "b"]);
+    e.preselect("b", "up");
+    e.add("c", S, { target: "a" });
+    assertEquals(e.preselection("b").dir, "up");
+    e.moveNextTo("c", "b", "left");
+    assertEquals(e.preselection("b").dir, "up");
+});
+
+Deno.test("presel: dwindle only; kept but unused in the other layouts", () => {
+    const e = eng();
+    open(e, ["a", "b"]);
+    e.preselect("b", "up");
+    e.setLayout(S, "master");
+    assertEquals(e.preselect("a", "left"), false, "no new ones");
+    assertEquals(e.preselectRatio("a", 0.3), false);
+    assertEquals(e.layout(S).presels, [], "nothing to draw");
+    e.add("c", S);
+    assertEquals(e.preselection("b").dir, "up", "not used by master's placement");
+    e.setLayout(S, "dwindle");
+    assertEquals(e.layout(S).presels.length, 1, "back with dwindle");
+});
+
+Deno.test("presel: the layout says where the preselected window would go, gaps and all", () => {
+    const e = E.createEngine({ gapsIn: 5, gapsOut: { left: 10, top: 10, right: 10, bottom: 10 } });
+    e.setArea(S, AREA);
+    open(e, ["a"]);
+    e.preselect("a", "right");
+    e.preselectRatio("a", 0.25);
+    let l = e.layout(S);
+    assertEquals(l.presels, [{ id: "a", dir: "right", ratio: 0.25, seq: 1, rect: { x: 490, y: 10, width: 1420, height: 1060 } }]);
+    e.add("b", S);
+    l = e.layout(S);
+    assertEquals(l.windows.b, { x: 490, y: 10, width: 1420, height: 1060 }, "where it said");
+    assertEquals(l.presels, []);
+});
+
+Deno.test("presel: a tile zoomed out of view shows no preselection", () => {
+    const e = eng();
+    open(e, ["a", "b", "c"]);                // a | (b / c)
+    e.preselect("a", "down");
+    e.preselect("c", "right");
+    e.zoomIn("c");
+    assertEquals(e.layout(S).presels.map((p) => p.id), ["c"]);
+});
+
+Deno.test("presel: a minimised window's preselection is neither drawn nor used", () => {
+    const e = eng();
+    open(e, ["a", "b"]);
+    e.preselect("b", "down");
+    e.setVisibility((id) => id !== "b");
+    assertEquals(e.layout(S).presels, []);
+    e.add("c", S);
+    assertEquals(e.preselection("b").dir, "down", "a hidden window is not the focused tile");
+});
+

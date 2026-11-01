@@ -14,9 +14,11 @@ package/
   contents/ui/main.qml         entry point: loads the installed build (so upgrades apply without logging out)
   contents/ui/HyprKwin.qml     the script: shortcuts, timers, overlays
   contents/ui/Border.qml, BorderStrip.qml, GroupBar.qml
+  contents/ui/PreselFeedback.qml  where a preselected window will go
   contents/ui/config.ui        settings page (+ contents/config/main.xml)
 tests/
-  *.test.js                    Deno unit tests for engine.js / rules.js
+  *.test.js                    Deno unit tests for engine.js / rules.js / shortcuts.js
+                               (bspwm.test.js: the features after bspwm)
   e2e/                         end-to-end tests in a headless nested KWin
 tools/                         install, uninstall, shortcut conflicts, docs helper
 ```

@@ -53,6 +53,10 @@
         <entry name="InactiveOpacity" type="Double"><default>1.0</default></entry>
         <entry name="ShowInactiveBorders" type="Bool"><default>false</default></entry>
         <entry name="GroupBarHeight" type="Int"><default>22</default></entry>
+        <!-- Where a preselected window will go (bspwm's presel_feedback). -->
+        <entry name="PreselFeedback" type="Bool"><default>true</default></entry>
+        <entry name="PreselFeedbackColor" type="Color"><default>#27293b</default></entry>
+        <entry name="PreselFeedbackOpacity" type="Int"><default>80</default><min>5</min><max>100</max></entry>
         <!-- Behaviour -->
         <entry name="FocusFollowsMouse" type="Bool"><default>false</default></entry>
         <entry name="AutoCreateDesktops" type="Bool"><default>true</default></entry>

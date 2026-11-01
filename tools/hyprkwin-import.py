@@ -527,6 +527,11 @@ def dispatcher_action(dispatcher, args, scratchpads):
                  "cyclenext": "cycleNext", "cycleprev": "cyclePrevious"}
         if msg in table:
             return table[msg]
+        # dwindle's one-off split direction for the next window: HyprKwin's
+        # preselection (which the same key again cancels, as bspwm's does).
+        words = low.split()
+        if msg == "preselect" and len(words) == 2 and words[1] in DIRECTIONS:
+            return "preselect" + DIRECTIONS[words[1]]
         raise ValueError("layoutmsg %s has no equivalent" % arg)
     if d == "togglespecialworkspace":
         name = arg or "special"

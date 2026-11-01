@@ -91,6 +91,8 @@ function createDriver(env) {
     var keysOpen = false;           // the keys guide (Meta+K) is up
     var keysReturnTo = null;        // the window that had the focus before it
     var actions = null;             // action name -> function, filled in below
+    var preselRects = [];           // [{id, owner, rect}] where preselected windows would go, on screen
+    var lastPresels = [];           // and those drawn
 
     // ---- helpers -----------------------------------------------------------
 
@@ -768,6 +770,11 @@ function createDriver(env) {
             // Tiles narrower or shorter than this show as their app's icon
             // until zoomed into (0: never).
             iconBelow: Math.max(0, num(rc("IconBelow", 120), 120)),
+            // Where a preselected window will go, shown as bspwm's
+            // presel_feedback is: a filled area over the tile.
+            preselFeedback: bool(rc("PreselFeedback", true), true),
+            preselFeedbackColor: colour(rc("PreselFeedbackColor", "#27293b"), "#27293b"),
+            preselFeedbackOpacity: Math.max(0.05, Math.min(1, num(rc("PreselFeedbackOpacity", 80), 80) / 100)),
             // While zoomed in, Escape zooms back out (it is taken from apps
             // for as long as the zoom lasts).
             zoomEscape: bool(rc("ZoomEscape", false), false),
@@ -1572,6 +1579,7 @@ function createDriver(env) {
         if (!native()) syncWorkspaces();
         engine.setVisibility(visible);
         var bars = [];
+        var feedback = [];
         stageStrips = {};
         stageSpaces = {};
         layoutSpaces().forEach(function (vs) {
@@ -1646,6 +1654,7 @@ function createDriver(env) {
             }
             if (!vs.visible) return;
             if (specialShown() && vs.space !== specialSpace(special.name)) return;
+            L.presels.forEach(function (p) { feedback.push({ id: "presel-" + p.id, owner: p.id, rect: p.rect }); });
             L.groups.forEach(function (g) {
                 if (!usableRect(g.rect)) {
                     log("skipping group bar", JSON.stringify(g.rect));
@@ -1662,6 +1671,7 @@ function createDriver(env) {
             });
         });
         groupBars = bars;
+        preselRects = feedback;
         if (native()) syncWorkspaces();
         scheduleDecorations();
         saveLayouts();
@@ -1906,6 +1916,8 @@ function createDriver(env) {
         });
         env.ui.setBorders(borders, cfg);
         env.ui.setGroupBars(bars, cfg);
+        lastPresels = preselFeedback(popups, fullscreenScreens);
+        if (env.ui.setPresels) env.ui.setPresels(lastPresels, cfg);
         var tiles = iconTiles(visible, popups, fullscreenScreens);
         lastIconTiles = tiles.map(function (t) { return t.id; });
         if (env.ui.setIconTiles) env.ui.setIconTiles(tiles);
@@ -1922,6 +1934,44 @@ function createDriver(env) {
         stageTransitions(strips);
         lastDim = scratchpadDim();
         if (env.ui.setDim) env.ui.setDim(lastDim);
+    }
+
+    // Where the preselected windows will go, as filled areas over their
+    // tiles (bspwm's presel_feedback). Like a border, one steps aside for a
+    // menu, or a window stacked over it, which it would be drawn across.
+    function preselFeedback(popups, fullscreenScreens) {
+        if (!cfg.preselFeedback) return [];
+        var out = [];
+        preselRects.forEach(function (f) {
+            var r = f.rect;
+            if (!usableRect(r)) return;
+            var mid = { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+            var screen = screens().filter(function (sc) { return contains(sc.geometry, mid); })[0];
+            if (screen && fullscreenScreens[screen.name]) return;
+            if (popups.some(function (p) { return overlaps(p, r); })) return;
+            var owner = f.owner ? tracked[f.owner] : null;
+            if (f.owner && (!owner || owner.w.minimized)) return;
+            if (stackedOver(owner ? owner.w : null, r)) return;
+            out.push({ id: f.id, owner: f.owner, x: r.x, y: r.y, width: r.width, height: r.height });
+        });
+        return out;
+    }
+
+    // Whether a window stacked above `w` (with no `w`, any window that is
+    // not tiled) reaches over `r`.
+    function stackedOver(w, r) {
+        var order = ws.stackingOrder || [];
+        var i = w ? order.indexOf(w) : -1;
+        for (var j = i + 1; j < order.length; j++) {
+            var o = order[j];
+            if (!o || o === w || o.deleted || o.minimized || String(o.caption) === OVERLAY_TITLE) continue;
+            if (o.desktopWindow || o.dock || o.popupWindow) continue;
+            if (!(o.normalWindow || o.dialog || o.utility || o.notification || o.criticalNotification)) continue;
+            if (!w && isTiled(stOf(o))) continue;
+            if (!kwinVisible(o) || !onCurrentActivity(o)) continue;
+            if (overlaps(copyRect(o.frameGeometry), r)) return true;
+        }
+        return false;
     }
 
     // What the animations effect dims while the scratchpad is open: every
@@ -3468,7 +3518,24 @@ function createDriver(env) {
         keysPageDown: function () { scrollKeys("pageDown"); },
         keysTop: function () { scrollKeys("top"); },
         keysBottom: function () { scrollKeys("bottom"); },
+        preselectLeft: function () { preselect("left"); },
+        preselectRight: function () { preselect("right"); },
+        preselectUp: function () { preselect("up"); },
+        preselectDown: function () { preselect("down"); },
+        preselectCancel: function () {
+            var st = active();
+            if (st && isTiled(st) && engine.cancelPreselection(st.id)) relayout();
+        },
+        preselectCancelAll: function () {
+            var space = currentSpace();
+            if (space && engine.cancelPreselections(space)) relayout();
+        },
     };
+    for (var r = 1; r <= 9; r++) {
+        (function (n) {
+            actions["preselectRatio" + n] = function () { preselectRatio(n / 10); };
+        })(r);
+    }
     for (var n = 1; n <= 10; n++) {
         (function (i) {
             actions["desktop" + i] = function () { gotoDesktop(i); };
@@ -3482,6 +3549,34 @@ function createDriver(env) {
             actions["toggleScratchpad" + slot] = function () { toggleSpecial(scratchpadName(slot)); };
             actions["moveToScratchpad" + slot] = function () { toggleActiveSpecial(scratchpadName(slot)); };
         })(k);
+    }
+
+    // ---- after bspwm ---------------------------------------------------------
+
+    // Only the dwindle layout has a tree to preselect in (or to turn round);
+    // in the others the actions say so and do nothing.
+    function dwindleOnly(space, what) {
+        if (space && engine.layoutOf(space) === "dwindle") return true;
+        announce(what + " needs the dwindle layout");
+        return false;
+    }
+
+    // bspwm's node -p: the focused window's tile is split that way for the
+    // next window to come into the workspace (the same way again cancels it).
+    function preselect(dir) {
+        var st = active();
+        if (!st || !isTiled(st) || !dwindleOnly(engine.spaceOf(st.id), "Preselection")) return;
+        engine.preselect(st.id, dir);
+        relayout();
+    }
+
+    // bspwm's node -o: the share the first (left or top) side of the split
+    // keeps; with no preselection yet, it makes one to the right.
+    function preselectRatio(ratio) {
+        var st = active();
+        if (!st || !isTiled(st) || !dwindleOnly(engine.spaceOf(st.id), "Preselection")) return;
+        engine.preselectRatio(st.id, ratio);
+        relayout();
     }
 
     function intoGroup(dir) {
@@ -3809,7 +3904,8 @@ function createDriver(env) {
                     engine.spaces().forEach(function (space) {
                         var p = engine.masterParams(space);
                         out[space] = { layout: engine.layoutOf(space), factor: Math.round(p.factor * 1000) / 1000,
-                                       masters: p.count, orientation: p.orientation, zoom: engine.zoomInfo(space) };
+                                       masters: p.count, orientation: p.orientation, zoom: engine.zoomInfo(space),
+                                       presels: engine.preselections(space).map(function (q) { return q.id; }) };
                     });
                     return out;
                 })(),
@@ -3825,6 +3921,7 @@ function createDriver(env) {
                 overlayWindows: (ws.windows || []).filter(isOverlay).length,
                 iconTiles: lastIconTiles,
                 stagePreviews: lastStagePreviews,
+                presels: lastPresels,
                 dim: lastDim,
                 zoomEscape: zoomKeysOn,
             };
@@ -3838,6 +3935,7 @@ function createDriver(env) {
                     demandsAttention: !!st.w.demandsAttention, opacity: st.w.opacity,
                     onAllDesktops: st.w.onAllDesktops, desktops: st.w.desktops.map(function (d) { return d.id; }),
                     output: st.w.output ? st.w.output.name : null, workspace: st.desktop,
+                    presel: engine.preselection(id),
                 };
             }
             return out;

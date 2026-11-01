@@ -146,13 +146,15 @@ function createEngine(userConfig) {
     var masterOpts = {}; // space -> {factor, count, orientation}
     var zooms = {};      // space -> the node zoomed into (dwindle only)
     var stageSets = {};  // space -> [[window id, ...]]: windows sharing the stage
+    var preselSeq = 0;   // preselections are numbered, so the newest is known
     var isVisible = function () { return true; };
     var nextNodeId = 1;
     var api = null;      // the engine's interface, filled in below (declared
                          // here: Plasma 6.8 warns of any use before this)
 
     function newLeaf(ids) {
-        return { id: nextNodeId++, leaf: true, wins: ids.slice(), active: 0, grouped: false, parent: null, rect: null };
+        return { id: nextNodeId++, leaf: true, wins: ids.slice(), active: 0, grouped: false, parent: null, rect: null,
+                 presel: null };
     }
 
     function newSplit(dir, ratio) {
@@ -512,9 +514,9 @@ function createEngine(userConfig) {
 
     function pickTargetLeaf(space, exclude) {
         var ls = leaves(roots[space]);
+        var usable = function (id) { return id !== exclude && spaceOf[id] === space && leafOf[id] && isVisible(id); };
         for (var i = 0; i < focusOrder.length; i++) {
-            var id = focusOrder[i];
-            if (id !== exclude && spaceOf[id] === space && leafOf[id] && isVisible(id)) return leafOf[id];
+            if (usable(focusOrder[i])) return leafOf[focusOrder[i]];
         }
         var vis = ls.filter(shown);
         if (vis.length) return vis[vis.length - 1];
@@ -522,7 +524,8 @@ function createEngine(userConfig) {
     }
 
     // Insert `id` into `space`. opts: {target: window id, cursor: {x,y},
-    // side: "left"|"right"|"up"|"down" (forces placement relative to target)}
+    // side: "left"|"right"|"up"|"down" (forces placement relative to target),
+    // presel: a tile whose preselection this window takes (and uses up)}
     function insert(id, space, opts) {
         opts = opts || {};
         spaceOf[id] = space;
@@ -533,15 +536,21 @@ function createEngine(userConfig) {
             leafOf[id] = l;
             return;
         }
-        var target = null;
-        if (opts.target && leafOf[opts.target] && spaceOf[opts.target] === space) target = leafOf[opts.target];
+        var target = null, side = opts.side, ratio = defaultShare();
+        if (opts.presel && opts.presel.presel) {
+            target = opts.presel;
+            side = target.presel.dir;
+            ratio = preselShare(target.presel);
+            target.presel = null;
+        }
+        if (!target && opts.target && leafOf[opts.target] && spaceOf[opts.target] === space) target = leafOf[opts.target];
         if (!target) target = pickTargetLeaf(space, id);
         computeRects(space);
 
         var dir, first;
-        if (opts.side) {
-            dir = (opts.side === "left" || opts.side === "right") ? "h" : "v";
-            first = opts.side === "left" || opts.side === "up";
+        if (side) {
+            dir = (side === "left" || side === "right") ? "h" : "v";
+            first = side === "left" || side === "up";
         } else {
             dir = autoDir(target.rect);
             if (cfg.forceSplit === 1) first = true;
@@ -553,7 +562,7 @@ function createEngine(userConfig) {
         }
 
         var leaf = newLeaf([id]);
-        var split = newSplit(dir, defaultShare());
+        var split = newSplit(dir, ratio);
         var parent = target.parent;
         replaceChild(parent, target, split, space);
         if (zooms[space] === target) zooms[space] = split;
@@ -578,9 +587,15 @@ function createEngine(userConfig) {
             leaf.active = Math.min(leaf.active, leaf.wins.length - 1);
             return;
         }
+        removeLeaf(leaf, space);
+    }
+
+    // Take a tile out of its space's tree; its sibling takes its place (and
+    // its preselection goes with it).
+    function removeLeaf(leaf, space) {
         var parent = leaf.parent;
         if (!parent) {
-            delete roots[space];
+            if (roots[space] === leaf) delete roots[space];
             return;
         }
         var sibling = parent.a === leaf ? parent.b : parent.a;
@@ -632,6 +647,50 @@ function createEngine(userConfig) {
         return s.ratio !== before;
     }
 
+    // ---- after bspwm -----------------------------------------------------------
+    //
+    // A preselection (bspwm's node -p) belongs to a tile: the next window to
+    // come into its space while that tile is the focused one splits it that
+    // way, instead of the automatic way, and takes the preselected side. Its
+    // ratio is the first (left or top) side's share, as bspwm's split_ratio
+    // is; until one is set it is the default split.
+
+    var SIDES = ["left", "right", "up", "down"];
+
+    function preselShare(p) {
+        var r = p.ratio === null || p.ratio === undefined ? defaultShare() : p.ratio;
+        return clamp(r, MIN_SHARE, 1 - MIN_SHARE);
+    }
+
+    // The part of `r` a window placed by preselection `p` would take.
+    function preselPart(r, p) {
+        var s = preselShare(p);
+        if (p.dir === "left") return rect(r.x, r.y, r.width * s, r.height);
+        if (p.dir === "right") return rect(r.x + r.width * s, r.y, r.width * (1 - s), r.height);
+        if (p.dir === "up") return rect(r.x, r.y, r.width, r.height * s);
+        return rect(r.x, r.y + r.height * s, r.width, r.height * (1 - s));
+    }
+
+    function copyOpts(opts) {
+        var out = {};
+        for (var k in (opts || {})) out[k] = opts[k];
+        return out;
+    }
+
+    // Where a window coming into a dwindle space goes when nothing says
+    // where: the focused tile's preselection if it has one, as in bspwm,
+    // else the automatic split.
+    function placement(id, space, opts) {
+        if (!roots[space] || modeOf(space) !== "dwindle" || (opts && (opts.side || opts.target))) return opts;
+        var out = copyOpts(opts);
+        var focus = pickTargetLeaf(space, id);
+        if (focus && focus.presel) {
+            out.presel = focus;
+            return out;
+        }
+        return out;
+    }
+
     api = {
         // Gaps for one space, from a workspace rule; null goes back to the
         // global setting.
@@ -677,6 +736,8 @@ function createEngine(userConfig) {
                 var first = mode === "master" && cfg.masterNewIsMaster;
                 var edge = first ? all[0] : all[all.length - 1];
                 opts = { target: edge.wins[edge.active], side: first ? "left" : "right" };
+            } else {
+                opts = placement(id, space, opts);
             }
             insert(id, space, opts);
         },
@@ -686,10 +747,12 @@ function createEngine(userConfig) {
         // Take a window out of the tree but remember focus history.
         detach: function (id) { detach(id); },
 
+        // A window sent to another space goes where a new one would there:
+        // into the preselection of the tile focused there, as bspwm sends one.
         moveToSpace: function (id, space, opts) {
             if (spaceOf[id] === space && leafOf[id]) return;
             detach(id);
-            insert(id, space, opts);
+            insert(id, space, placement(id, space, opts));
         },
 
         focused: function (id) {
@@ -857,7 +920,7 @@ function createEngine(userConfig) {
         layout: function (space, area) {
             if (area) areas[space] = area;
             var result = { windows: {}, groups: [], hidden: [], offscreen: [], strip: [], stripSets: [], stage: [],
-                           waiting: {}, stripArea: null };
+                           waiting: {}, stripArea: null, presels: [] };
             var root = roots[space];
             if (!root) return result;
             area = areas[space];
@@ -878,8 +941,22 @@ function createEngine(userConfig) {
                 var b = Math.abs(rectBottom(r) - rectBottom(inner)) < eps ? 0 : gIn;
                 return roundRect(shrink(r, l, t, rr, b));
             };
+            // Where preselected windows would go, with the gaps they will
+            // have: the gap between windows even when this one is alone.
+            var gappedFull = function (r) {
+                var l = Math.abs(r.x - inner.x) < eps ? 0 : g.inner;
+                var t = Math.abs(r.y - inner.y) < eps ? 0 : g.inner;
+                var rr = Math.abs(rectRight(r) - rectRight(inner)) < eps ? 0 : g.inner;
+                var b = Math.abs(rectBottom(r) - rectBottom(inner)) < eps ? 0 : g.inner;
+                return roundRect(shrink(r, l, t, rr, b));
+            };
+            var dwindle = modeOf(space) === "dwindle";
             all.forEach(function (leaf) {
                 var r = leaf.rect;
+                if (r && leaf.presel && dwindle) {
+                    result.presels.push({ id: leaf.wins[leaf.active], dir: leaf.presel.dir, ratio: preselShare(leaf.presel),
+                                          seq: leaf.presel.seq, rect: gappedFull(preselPart(r, leaf.presel)) });
+                }
                 if (!r) {
                     // Scrolled out of view, or waiting beside the stage: the
                     // driver parks it, at its size on the stage if it has one.
@@ -1004,9 +1081,9 @@ function createEngine(userConfig) {
             var la = leafOf[a], lb = leafOf[b];
             if (!la || !lb || la === lb) return false;
             var sa = spaceOf[a], sb = spaceOf[b];
-            var tmp = { wins: la.wins, active: la.active, grouped: la.grouped };
-            la.wins = lb.wins; la.active = lb.active; la.grouped = lb.grouped;
-            lb.wins = tmp.wins; lb.active = tmp.active; lb.grouped = tmp.grouped;
+            var tmp = { wins: la.wins, active: la.active, grouped: la.grouped, presel: la.presel };
+            la.wins = lb.wins; la.active = lb.active; la.grouped = lb.grouped; la.presel = lb.presel;
+            lb.wins = tmp.wins; lb.active = tmp.active; lb.grouped = tmp.grouped; lb.presel = tmp.presel;
             la.wins.forEach(function (w) { leafOf[w] = la; spaceOf[w] = sa; });
             lb.wins.forEach(function (w) { leafOf[w] = lb; spaceOf[w] = sb; });
             return true;
@@ -1034,14 +1111,15 @@ function createEngine(userConfig) {
             var ws = api.windows(from);
             var active = api.lastFocused(from);
             // Keep groups intact by moving whole leaves.
-            leaves(roots[from]).forEach(function (leaf) {
+            leaves(roots[from] || null).forEach(function (leaf) {
                 var first = leaf.wins[0];
-                var grouped = leaf.grouped, rest = leaf.wins.slice(1), act = leaf.active;
+                var grouped = leaf.grouped, rest = leaf.wins.slice(1), act = leaf.active, presel = leaf.presel;
                 rest.forEach(function (w) { detach(w); });
                 detach(first);
                 insert(first, to, {});
                 var nl = leafOf[first];
                 nl.grouped = grouped;
+                nl.presel = presel;
                 rest.forEach(function (w) { nl.wins.push(w); leafOf[w] = nl; spaceOf[w] = to; });
                 nl.active = act;
             });
@@ -1070,6 +1148,71 @@ function createEngine(userConfig) {
             var side = m === nl ? "left" : m === nr ? "right" : m === nu ? "up" : "down";
             return api.moveNextTo(id, target, side);
         },
+
+        // ---- after bspwm -------------------------------------------------
+        //
+        // Preselections (and what works on the tree itself) belong to the
+        // dwindle tree, and do nothing in the other layouts (false). A
+        // preselection made there stays, unseen and unused, until the
+        // workspace is back in dwindle.
+
+        // Preselect a side of the window's tile (bspwm node -p); the same
+        // side again cancels it. Returns the preselection, null once
+        // cancelled, or false if there is none to make.
+        preselect: function (id, side) {
+            var leaf = leafOf[id];
+            if (!leaf || SIDES.indexOf(side) < 0 || modeOf(spaceOf[id]) !== "dwindle") return false;
+            if (leaf.presel && leaf.presel.dir === side) {
+                leaf.presel = null;
+                return null;
+            }
+            if (!leaf.presel) leaf.presel = { dir: side, ratio: null };
+            leaf.presel.dir = side;
+            leaf.presel.seq = ++preselSeq;
+            return api.preselection(id);
+        },
+
+        // The share of the tile the first (left or top) side keeps, bspwm's
+        // node -o. Without a preselection this makes one, to the right, as
+        // bspwm does.
+        preselectRatio: function (id, ratio) {
+            var leaf = leafOf[id];
+            if (!leaf || typeof ratio !== "number" || !isFinite(ratio) || modeOf(spaceOf[id]) !== "dwindle") return false;
+            if (!leaf.presel) leaf.presel = { dir: "right", ratio: null, seq: ++preselSeq };
+            leaf.presel.ratio = clamp(ratio, MIN_SHARE, 1 - MIN_SHARE);
+            return api.preselection(id);
+        },
+
+        // {dir, ratio, seq} of the window's tile, or null.
+        preselection: function (id) {
+            var leaf = leafOf[id];
+            if (!leaf || !leaf.presel) return null;
+            return { dir: leaf.presel.dir, ratio: preselShare(leaf.presel), seq: leaf.presel.seq };
+        },
+
+        cancelPreselection: function (id) {
+            var leaf = leafOf[id];
+            if (!leaf || !leaf.presel) return false;
+            leaf.presel = null;
+            return true;
+        },
+
+        cancelPreselections: function (space) {
+            var any = false;
+            leaves(roots[space] || null).forEach(function (l) {
+                if (l.presel) any = true;
+                l.presel = null;
+            });
+            return any;
+        },
+
+        // Every preselection in a space: [{id, wins, dir, ratio, seq}].
+        preselections: function (space) {
+            return leaves(roots[space] || null).filter(function (l) { return !!l.presel; }).map(function (l) {
+                return { id: l.wins[l.active], wins: l.wins.slice(), dir: l.presel.dir, ratio: preselShare(l.presel), seq: l.presel.seq };
+            });
+        },
+
 
         // ---- groups -------------------------------------------------------
 

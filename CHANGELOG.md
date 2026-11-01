@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added
+
+- **Preselection, after bspwm** (`node -p`, `node -o`): preselect a side of
+  the focused window's tile, and the next window takes it, at a ratio you
+  can set (0.1 … 0.9, the left or top side's share, as in bspwm). Where it
+  will go is filled in meanwhile, in a colour and opacity of your own (on by
+  default, bspwm's `#27293b`). A `hyprland.conf` import brings
+  `layoutmsg, preselect` binds across. The new actions have no keys; see
+  [Preselection and the tree](docs/settings.md#preselection-and-the-tree-after-bspwm).
+
 ### Fixed
 
 - **Windows beside an edge dragged with the mouse stay in their tiles.** A

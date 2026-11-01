@@ -625,6 +625,7 @@ Item {
     property var iconTileObjects: ({})
     property int bordersShown: 0
     property int barsShown: 0
+    property int preselsShown: 0
 
     Component { id: borderComponent; Border {} }
     // Declared rather than created on demand: KWin only registers an internal
@@ -660,6 +661,7 @@ Item {
         onDismissed: root.run("closeKeys")
     }
     Component { id: groupBarComponent; GroupBar {} }
+    Component { id: preselComponent; PreselFeedback {} }
     Component { id: iconTileComponent; IconTile {} }
     Component { id: stagePreviewComponent; StagePreview {} }
     Component { id: stageTransitionComponent; StageTransition {} }
@@ -677,7 +679,7 @@ Item {
         style = cfg;
         revision++;
         bordersShown = list.length;
-        overlaysOnScreen = bordersShown + barsShown;
+        overlaysOnScreen = bordersShown + barsShown + preselsShown;
         const seen = {};
         for (const entry of list) {
             seen[entry.id] = true;
@@ -806,11 +808,36 @@ Item {
         overlay.play(t);
     }
 
+    // Where preselected windows will go, one filled overlay each.
+    property var preselObjects: ({})
+    function syncPresels(list, cfg) {
+        revision++;
+        preselsShown = list.length;
+        overlaysOnScreen = bordersShown + barsShown + preselsShown;
+        const seen = {};
+        for (const entry of list) {
+            seen[entry.id] = true;
+            let presel = preselObjects[entry.id];
+            if (!presel) {
+                presel = preselComponent.createObject(root, {
+                    overlaysHidden: Qt.binding(() => root.effectActive || root.shuttingDown),
+                });
+                preselObjects[entry.id] = presel;
+            }
+            presel.fillColor = cfg.preselFeedbackColor || "#27293b";
+            presel.fillOpacity = cfg.preselFeedbackOpacity || 0.8;
+            presel.radius = cfg.borderRadius || 0;
+            presel.area = { x: entry.x, y: entry.y, width: entry.width, height: entry.height };
+            presel.revision = revision;
+        }
+        dropMissing(preselObjects, seen);
+    }
+
     function syncGroupBars(list, cfg) {
         style = cfg;
         revision++;
         barsShown = list.length;
-        overlaysOnScreen = bordersShown + barsShown;
+        overlaysOnScreen = bordersShown + barsShown + preselsShown;
         const seen = {};
         for (const bar of list) {
             seen[bar.id] = true;
@@ -875,6 +902,7 @@ Item {
             ui: {
                 setBorders: (list, cfg) => root.syncBorders(list, cfg),
                 setGroupBars: (list, cfg) => root.syncGroupBars(list, cfg),
+                setPresels: (list, cfg) => root.syncPresels(list, cfg),
                 setIconTiles: (list) => root.syncIconTiles(list),
                 setStagePreviews: (list) => root.syncStagePreviews(list),
                 setDim: (dim) => dimMarker.set(dim),
@@ -912,6 +940,7 @@ Item {
         dimMarker.hideAll();
         for (const key in borderObjects) borderObjects[key].hideAll();
         for (const key in groupBarObjects) groupBarObjects[key].hide();
+        for (const key in preselObjects) preselObjects[key].hideAll();
         for (const key in iconTileObjects) iconTileObjects[key].hide();
         for (const icon of spareIconTiles) icon.hide();
         for (const key in stagePreviewObjects) stagePreviewObjects[key].hideAll();

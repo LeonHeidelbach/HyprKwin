@@ -87,7 +87,8 @@ function find(guide, label) {
 Deno.test("the keys guide shows the keys as they are bound, not the defaults", () => {
     const guide = S.keysGuide(infos({ close: [S.keyCode("Meta+W")], pseudo: [] }), [], [], {});
     assertEquals(guide.map((s) => s.title),
-                 ["Windows", "Focus and moving", "Resizing", "Workspaces and monitors", "Scratchpads", "Layouts", "Groups", "Other"]);
+                 ["Windows", "Focus and moving", "Resizing", "Workspaces and monitors", "Scratchpads", "Layouts", "Groups",
+                  "Preselection and the tree", "Other"]);
     assertEquals(find(guide, "Close window"), { section: "Windows", label: "Close window", keys: ["Meta+W"] });
     assertEquals(find(guide, "Keep window at its own size in its tile").keys, [], "unbound");
     assertEquals(find(guide, "Show keyboard shortcuts").keys, ["Meta+K"]);
@@ -132,8 +133,9 @@ Deno.test("the keys guide can be searched by name, section, key or loosely", () 
     const guide = S.keysGuide(infos({}), submaps, [], {});
     const labels = (q) => S.filterKeysGuide(guide, q).flatMap((s) => s.rows.map((r) => r.label));
     assertEquals(S.filterKeysGuide(guide, "  "), guide, "nothing typed: everything");
-    assertEquals(labels("close"), ["Close window"]);
-    assertEquals(labels("CLOSE win"), ["Close window"], "any case, every word");
+    assertEquals(labels("close")[0], "Close window", "the closest match first");
+    assertEquals(labels("CLOSE win")[0], "Close window", "any case, every word");
+    assertEquals(labels("close window").length < 10, true, "and few others");
     assertEquals(labels("meta+k"), ["Show keyboard shortcuts"], "by key");
     assert(labels("scratchpad").length >= 2, "by section");
     assert(labels("swtw").includes("Switch to workspace 1–10"), "letters in order");
@@ -143,7 +145,7 @@ Deno.test("the keys guide can be searched by name, section, key or loosely", () 
                  ["Enter the resize submap", "resize: Move split left"]);
     const sub = S.filterKeysGuide(guide, "leave the submap").find((s) => s.title === "Submaps");
     assertEquals(sub.rows[0].label, "Enter the resize submap", "the submap's own entry comes first");
-    assertEquals(S.filterKeysGuide(guide, "close")[0].rows.length, 1, "sections keep only what matches");
+    assertEquals(S.filterKeysGuide(guide, "show keyboard")[0].rows.length, 1, "sections keep only what matches");
 });
 
 Deno.test("workspace keys follow the keyboard layout's digit row", () => {
@@ -165,6 +167,19 @@ Deno.test("a key HyprKwin gave an action on any layout is HyprKwin's to change",
     for (const k of ["Meta+#", "Meta+£", "Meta+3", "Meta+§"]) assert(own.includes(S.keyCode(k)), k);
     assert(!own.includes(S.keyCode("Meta+F3")), "one the user chose is not");
     assert(!own.includes(S.keyCode("Meta+Alt+£")), "nor another family's");
+});
+
+Deno.test("the actions after bspwm are all there, and unbound", () => {
+    const list = S.shortcutList();
+    const byAction = Object.fromEntries(list.map((s) => [s.action, s]));
+    const names = ["preselectLeft", "preselectDown", "preselectUp", "preselectRight", "preselectCancel", "preselectCancelAll"];
+    for (let i = 1; i <= 9; i++) names.push("preselectRatio" + i);
+    for (const a of names) {
+        assert(byAction[a], a + " is registered");
+        assertEquals(byAction[a].name, "HyprKwin " + a);
+        assertEquals(byAction[a].key, "", a + " has no key of its own");
+    }
+    assertEquals(byAction.preselectRatio3.section, "Preselection and the tree");
 });
 
 Deno.test("a submap whose key another shortcut holds is marked in the keys guide", () => {

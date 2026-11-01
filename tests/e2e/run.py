@@ -4050,6 +4050,115 @@ def stage_previews_give_way_to_menus(sb):
     eq(len(sb.state()["stagePreviews"][0]["shown"]), 2, "and is back once it closes")
 
 
+# ---- after bspwm ------------------------------------------------------------
+
+
+def rect_of(p):
+    return (p["x"], p["y"], p["width"], p["height"])
+
+
+@test
+def preselection_places_the_next_window(sb):
+    """bspwm's node -p and -o: the next window takes the preselected part of
+    the focused tile, which is filled in meanwhile."""
+    sb.spawn("A")
+    sb.invoke("preselectDown")
+    s = sb.state()
+    eq(sb.window("A", s)["presel"]["dir"], "down", "preselected")
+    eq([rect_of(p) for p in s["presels"]], [(10, 545, 1900, 525)], "the lower half is filled in")
+    eq("10,545 1900x525" in sb.overlays(), True, "by an overlay window: %r" % (sb.overlays(),))
+    sb.invoke("preselectRatio3")
+    s = sb.state()
+    eq([rect_of(p) for p in s["presels"]], [(10, 333, 1900, 737)], "A keeps the top 30%")
+    sb.spawn("B")
+    s = sb.state()
+    eq(sb.geometry("B", s), (10, 333, 1900, 737), "B goes where it was shown")
+    eq(sb.geometry("A", s), (10, 10, 1900, 313), "A keeps its 30%")
+    eq((s["presels"], sb.window("A", s)["presel"]), ([], None), "and the preselection is used up")
+    sb.invoke("preselectLeft")
+    eq(len(sb.state()["presels"]), 1, "B preselected")
+    sb.invoke("preselectLeft")
+    eq(sb.state()["presels"], [], "the same side again cancels it")
+    sb.invoke("preselectRight")
+    sb.invoke("preselectCancel")
+    eq(sb.state()["presels"], [], "cancelled")
+
+
+@test
+def preselection_stays_with_its_window(sb):
+    """Only the focused window's preselection is used; the others wait, and go
+    with their window when it closes. The other layouts leave them be."""
+    sb.spawn("A")
+    sb.invoke("preselectUp")
+    sb.spawn("B")                            # A's: B above A
+    s = sb.state()
+    eq(sb.geometry("B", s)[1] < sb.geometry("A", s)[1], True, "B above A")
+    sb.invoke("preselectRight")              # on B, focused
+    sb.invoke("focusDown")                   # A, no preselection
+    sb.spawn("C")
+    s = sb.state()
+    eq(sb.window("B", s)["presel"]["dir"], "right", "B's waits: C split A instead")
+    eq(sb.geometry("C", s)[1] > sb.geometry("B", s)[1], True, "C beside A, below B")
+    sb.invoke("layoutMaster")
+    sb.invoke("preselectLeft")
+    s = sb.state()
+    eq(sb.window("C", s)["presel"], None, "no preselecting in master")
+    eq(s["presels"], [], "nor any shown")
+    sb.invoke("layoutDwindle")
+    eq(len(sb.state()["presels"]), 1, "B's back with dwindle")
+    sb.clients[1].kill()                     # B
+    sb.wait_for(lambda s: len(s["windows"]) == 2, "B gone")
+    sb.settle()
+    eq(sb.state()["presels"], [], "gone with its window")
+
+
+@test
+def preselection_feedback_lets_clicks_through(sb):
+    """The filled area is drawn over a window, which still takes the click."""
+    sb.spawn("A")
+    sb.invoke("preselectRight")
+    sb.spawn("B")                            # B takes it
+    sb.invoke("preselectDown")               # on B
+    sb.invoke("focusLeft")
+    s = sb.state()
+    eq(s["active"], sb.window("A", s)["id"], "A focused")
+    eq(len(s["presels"]), 1, "B's preselection shown")
+    sb.input().click(1400, 900)              # inside the filled area, over B
+    sb.settle(0.5)
+    s = sb.state()
+    eq(s["active"], sb.window("B", s)["id"], "the click reached B")
+
+
+@test
+def preselection_and_workspaces(sb):
+    """A window sent to a workspace goes into the preselection focused there,
+    as bspwm sends one; a window leaving takes its own preselection along."""
+    sb.spawn("A")
+    sb.invoke("preselectLeft")
+    sb.invoke("desktop2")
+    sb.spawn("B")
+    eq(sb.state()["presels"], [], "workspace 2 has none to show")
+    sb.invoke("moveToDesktop1")
+    s = sb.state()
+    eq((sb.geometry("B", s), sb.geometry("A", s)), (LEFT, RIGHT), "B went into A's preselection")
+    eq(s["presels"], [], "used up")
+    sb.invoke("preselectDown")               # on B
+    eq(len(sb.state()["presels"]), 1, "B's shown")
+    sb.invoke("moveToDesktopSilent2")
+    s = sb.state()
+    eq((s["presels"], sb.window("B", s)["presel"]), ([], None), "gone with B")
+    eq(sb.geometry("A", s), FULL, "A has workspace 1 to itself")
+
+
+@test(config={"OsdDuration": 4000})
+def preselection_needs_dwindle(sb):
+    sb.spawn("A")
+    sb.invoke("layoutMonocle")
+    sb.invoke("preselectRight", settle=False)
+    time.sleep(0.4)
+    eq(len(osd_boxes(sb)), 1, "says so")
+    eq(sb.window("A")["presel"], None, "and does nothing")
+
 def main():
     words = [w for w in sys.argv[1:] if not w.startswith("-")]
     selected = [t for t in TESTS if not words or any(w in t.__name__ for w in words)]

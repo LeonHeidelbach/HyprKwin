@@ -27,6 +27,8 @@ System Settings › Window Management › KWin Scripts › HyprKwin › configur
 | Turning the gradient | `animation = borderangle, …` | off (0°/s) |
 | Focused / unfocused window opacity | `decoration:active_opacity`, `inactive_opacity` | 1.0 (untouched) |
 | Group tab bar height | `group:groupbar:height` | 22 |
+| Show where a preselected window will go | bspwm's `presel_feedback` | on |
+| Preselection colour / opacity | bspwm's `presel_feedback_color` | #27293b, 80 % |
 | Focus follows mouse | `input:follow_mouse = 1` | off |
 | Start each session on workspace 1 | – | on |
 | Every monitor has its own workspaces | one workspace per monitor | on |
@@ -208,6 +210,43 @@ you can change on the Layout tab — shows its app's icon instead; click it and
 HyprKwin zooms in until the window is big enough. And if you turn on "While
 zoomed in, Escape zooms back out", Escape steps back out a level at a time;
 it is taken from your apps only while a zoom lasts.
+
+### Preselection and the tree (after bspwm)
+
+For anyone coming from bspwm, the dwindle layout's tree can be worked the way
+bspwm works its own. None of these actions has a key by default; bind them in
+System Settings › Keyboard › Shortcuts › KWin (they are listed as
+"HyprKwin: …", and as `HyprKwin <action>` to `kglobalaccel` and
+`hyprkwinctl dispatch <action>`).
+
+**Preselection** (bspwm's `node -p` and `node -o`). `preselectLeft`,
+`preselectDown`, `preselectUp` and `preselectRight` preselect a side of the
+focused window's tile: the next window to come into the workspace while that
+window has the focus does not split it the automatic way, but takes that
+side. The part of the tile it will take is filled in meanwhile ("Show where
+a preselected window will go" on the Appearance tab, in a colour and opacity
+of your own; bspwm's `#27293b` to start with). Preselecting the same side
+again cancels it, another side replaces it, and `preselectCancel` /
+`preselectCancelAll` cancel the window's, or every one on the workspace.
+
+`preselectRatio1` … `preselectRatio9` set the split to 0.1 … 0.9. As in bspwm
+the ratio is the first side's share, left or top: with `preselectRight` and
+0.3 the window keeps 30 % and the new one gets 70 %; with `preselectLeft`
+and 0.3 the new one gets 30 %. Until a ratio is set it is the default split
+ratio (Layout tab). A ratio with no preselection makes one to the right, as
+bspwm makes one east.
+
+A preselection belongs to its window's tile (in a group, to the group's
+tile), and several windows can each have one. Only the focused window's is
+used; with none there, the next window goes where it always would. A window
+sent to another workspace also goes into the preselection of the window
+focused there, as bspwm sends one. A preselection lasts until it is used or
+cancelled, or its window closes, floats or leaves the workspace; a
+preselection on a window you swap goes with it. Preselections only mean
+something in dwindle: elsewhere the actions say so and do nothing, and one
+made earlier waits, unseen, until the workspace is back in dwindle. They
+are not kept from one session to the next, as where windows sit in the tree
+is not.
 
 ### Scratchpads
 
