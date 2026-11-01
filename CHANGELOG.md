@@ -19,6 +19,8 @@
   preselection on the workspace. Marked windows have a border of their own
   colour.
 - **Rotate and flip** the split around the window (bspwm's `-R` and `-F`).
+- **Locked and private windows** (bspwm's flags): the close key leaves a
+  locked window open, and new windows split another tile than a private one.
 
 ### Fixed
 

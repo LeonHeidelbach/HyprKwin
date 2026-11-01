@@ -392,3 +392,49 @@ Deno.test("flip: horizontal swaps top and bottom, vertical left and right", () =
     assertEquals(e.flip("b", "sideways"), false);
 });
 
+// ---- flags ----------------------------------------------------------------------
+
+Deno.test("flags belong to the window: they survive floating, layouts and moves", () => {
+    const e = eng();
+    open(e, ["a", "b"]);
+    assertEquals(e.toggleFlag("a", "locked"), true);
+    e.toggleFlag("a", "private");
+    e.detach("a");
+    e.add("a", S);
+    e.setLayout(S, "master");
+    e.moveToSpace("a", T, {});
+    assertEquals(e.flagsOf("a"), { marked: false, locked: true, "private": true });
+    assertEquals(e.toggleFlag("a", "locked"), false);
+    assertEquals(e.setFlag("a", "sticky", true), false, "only bspwm's three");
+});
+
+Deno.test("private: the automatic split goes to the largest tile that is not private", () => {
+    const e = eng();
+    open(e, ["a", "b", "c"]);                // a | (b / c)
+    e.toggleFlag("c", "private");
+    e.add("d", S);                           // c is focused, but private
+    assertEquals(e.dump(S), { dir: "h", ratio: 0.5, a: { dir: "v", ratio: 0.5, a: "a", b: "d" }, b: { dir: "v", ratio: 0.5, a: "b", b: "c" } });
+});
+
+Deno.test("private: a preselected tile is used before a private one; all private, the usual split", () => {
+    let e = eng();
+    open(e, ["a", "b"]);
+    e.toggleFlag("a", "private");
+    e.toggleFlag("b", "private");
+    e.preselect("a", "down");
+    e.add("c", S);                           // b is focused and private, a has a preselection
+    assertEquals(e.dump(S), { dir: "h", ratio: 0.5, a: { dir: "v", ratio: 0.5, a: "a", b: "c" }, b: "b" });
+    e = eng();
+    open(e, ["a", "b"]);
+    e.toggleFlag("a", "private");
+    e.toggleFlag("b", "private");
+    e.add("c", S);
+    assertEquals(e.dump(S).b, { dir: "v", ratio: 0.5, a: "b", b: "c" }, "all private: b splits after all");
+    e = eng();
+    open(e, ["a", "b"]);
+    e.toggleFlag("b", "private");
+    e.preselect("b", "up");
+    e.add("c", S);
+    assertEquals(e.dump(S).b, { dir: "v", ratio: 0.5, a: "c", b: "b" }, "its own preselection still counts");
+});
+

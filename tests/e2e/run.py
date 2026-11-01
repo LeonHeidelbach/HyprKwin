@@ -4219,6 +4219,29 @@ def rotate_and_flip(sb):
     s = sb.state()
     eq(sb.geometry("A", s)[1], 10, "and back on top")
 
+
+@test
+def locked_windows_stay_open(sb):
+    sb.spawn("A")
+    sb.invoke("toggleLocked")
+    sb.invoke("close")
+    sb.settle(0.5)
+    eq(len(sb.state()["windows"]), 1, "still there")
+    sb.invoke("toggleLocked")
+    sb.invoke("close")
+    sb.wait_for(lambda s: not s["windows"], "closed once unlocked")
+
+
+@test
+def private_windows_are_not_split(sb):
+    sb.spawn("A")
+    sb.spawn("B")                            # A | B, B focused
+    sb.invoke("togglePrivate")
+    sb.spawn("C")
+    s = sb.state()
+    eq(sb.geometry("B", s), RIGHT, "B keeps its tile")
+    eq(sb.geometry("C", s)[0] < 960, True, "C split A instead")
+
 def main():
     words = [w for w in sys.argv[1:] if not w.startswith("-")]
     selected = [t for t in TESTS if not words or any(w in t.__name__ for w in words)]

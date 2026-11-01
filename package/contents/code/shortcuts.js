@@ -20,6 +20,8 @@ function shortcutList() {
         ["ruleFloatApp", "Always float this app", ""],
         ["ruleTileApp", "Always tile this app", ""],
         ["ruleScratchpadApp", "Always open this app in the scratchpad", ""],
+        ["toggleLocked", "Lock / unlock window (the close key leaves it open)", ""],
+        ["togglePrivate", "Keep new windows from splitting this one (private)", ""],
 
         ["Focus and moving"],
         ["focusLeft", "Focus window left", "Meta+Left"],

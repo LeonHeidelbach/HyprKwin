@@ -2155,6 +2155,10 @@ function createDriver(env) {
     // its title bar (so it can still ask to save first).
     function closeStagePreview(id) {
         if (engine.stageSet(id).length > 1 || !tracked[id]) return;
+        if (engine.flag(id, "locked")) {
+            announce("Locked: not closing");
+            return;
+        }
         tracked[id].w.closeWindow();
     }
 
@@ -3402,7 +3406,16 @@ function createDriver(env) {
     }
 
     actions = {
-        close: function () { var st = active(); if (st) st.w.closeWindow(); else if (ws.activeWindow) ws.activeWindow.closeWindow(); },
+        close: function () {
+            var st = active();
+            if (st && engine.flag(st.id, "locked")) {
+                // bspwm's locked flag: node -c leaves it open.
+                announce("Locked: not closing");
+                return;
+            }
+            if (st) st.w.closeWindow();
+            else if (ws.activeWindow) ws.activeWindow.closeWindow();
+        },
         toggleSplit: function () {
             var st = active();
             if (!st) return;
@@ -3568,6 +3581,8 @@ function createDriver(env) {
         rotateCounterClockwise: function () { treeAction("Rotate", function (id) { return engine.rotate(id, 270); }); },
         flipHorizontal: function () { treeAction("Flip", function (id) { return engine.flip(id, "horizontal"); }); },
         flipVertical: function () { treeAction("Flip", function (id) { return engine.flip(id, "vertical"); }); },
+        toggleLocked: function () { toggleFlag("locked", "Locked", "Unlocked"); },
+        togglePrivate: function () { toggleFlag("private", "Private: new windows go elsewhere", "Not private"); },
     };
     for (var r = 1; r <= 9; r++) {
         (function (n) {
@@ -3622,6 +3637,12 @@ function createDriver(env) {
         var st = active();
         if (!st || !isTiled(st) || !dwindleOnly(engine.spaceOf(st.id), what)) return;
         if (fn(st.id)) relayout();
+    }
+
+    function toggleFlag(name, on, off) {
+        var st = active();
+        if (!st) return;
+        announce(engine.toggleFlag(st.id, name) ? on : off);
     }
 
     function intoGroup(dir) {

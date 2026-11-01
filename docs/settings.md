@@ -272,6 +272,15 @@ two sides change places where the turn carries the first past the second,
 as bspwm's `rotate_tree` does. `flipHorizontal` swaps what is above and
 below, `flipVertical` what is left and right.
 
+**Locked and private** (bspwm's flags). A window marked with `toggleLocked`
+is left open by HyprKwin's close key (and a right-click on its stage
+preview); its own close button still closes it. `togglePrivate` keeps the
+automatic split away from a window: a new window splits the largest other
+tile that is neither private nor preselected instead, as bspwm's
+`find_public` picks one, and only when every tile is private does it split
+the focused one after all. Its own preselection still counts. Flags belong to
+the window, through layout changes, floating and moves.
+
 ### Scratchpads
 
 `Meta+S` shows and hides the scratchpad, and `Meta+Alt+S` puts the focused

@@ -146,7 +146,7 @@ function createEngine(userConfig) {
     var masterOpts = {}; // space -> {factor, count, orientation}
     var zooms = {};      // space -> the node zoomed into (dwindle only)
     var stageSets = {};  // space -> [[window id, ...]]: windows sharing the stage
-    var flags = {};      // window id -> {marked: seq or 0}
+    var flags = {};      // window id -> {marked: seq or 0, locked, private}
     var flagSeq = 0;     // marked windows are numbered, so the newest is known
     var preselSeq = 0;   // preselections are numbered, so the newest is known
     var isVisible = function () { return true; };
@@ -527,6 +527,7 @@ function createEngine(userConfig) {
 
     // Insert `id` into `space`. opts: {target: window id, cursor: {x,y},
     // side: "left"|"right"|"up"|"down" (forces placement relative to target),
+    // leaf: the tile to split instead of the target,
     // presel: a tile whose preselection this window takes (and uses up)}
     function insert(id, space, opts) {
         opts = opts || {};
@@ -544,6 +545,8 @@ function createEngine(userConfig) {
             side = target.presel.dir;
             ratio = preselShare(target.presel);
             target.presel = null;
+        } else if (opts.leaf) {
+            target = opts.leaf;
         }
         if (!target && opts.target && leafOf[opts.target] && spaceOf[opts.target] === space) target = leafOf[opts.target];
         if (!target) target = pickTargetLeaf(space, id);
@@ -661,7 +664,7 @@ function createEngine(userConfig) {
     // whatever tile it is in.
 
     var SIDES = ["left", "right", "up", "down"];
-    var FLAGS = ["marked"];
+    var FLAGS = ["marked", "locked", "private"];
 
     function preselShare(p) {
         var r = p.ratio === null || p.ratio === undefined ? defaultShare() : p.ratio;
@@ -679,6 +682,25 @@ function createEngine(userConfig) {
 
     function flagOf(id, name) {
         return !!(flags[id] && flags[id][name]);
+    }
+
+    function isPrivateLeaf(leaf) {
+        return leaf.wins.some(function (w) { return flagOf(w, "private"); });
+    }
+
+    // The tile a window goes into instead of a private one, bspwm's
+    // find_public: the largest one that is neither private nor preselected,
+    // or failing that the largest one with a preselection (or not private).
+    function publicLeaf(space) {
+        computeRects(space);
+        var auto = null, manual = null, autoArea = 0, manualArea = 0;
+        leaves(roots[space]).forEach(function (l) {
+            if (!l.rect || !shown(l)) return;
+            var area = l.rect.width * l.rect.height, priv = isPrivateLeaf(l);
+            if (area > manualArea && (l.presel || !priv)) { manual = l; manualArea = area; }
+            if (area > autoArea && !l.presel && !priv) { auto = l; autoArea = area; }
+        });
+        return auto || manual;
     }
 
     // The tile with the newest preselection in a space, leaving out the
@@ -700,7 +722,8 @@ function createEngine(userConfig) {
 
     // Where a window coming into a dwindle space goes when nothing says
     // where: the focused tile's preselection if it has one, as in bspwm,
-    // else the automatic split.
+    // else the automatic split, which never splits a private window while
+    // there is another to split.
     function placement(id, space, opts) {
         if (!roots[space] || modeOf(space) !== "dwindle" || (opts && (opts.side || opts.target))) return opts;
         var out = copyOpts(opts);
@@ -708,6 +731,13 @@ function createEngine(userConfig) {
         if (focus && focus.presel) {
             out.presel = focus;
             return out;
+        }
+        if (focus && isPrivateLeaf(focus)) {
+            var other = publicLeaf(space);
+            if (other && other !== focus) {
+                if (other.presel) out.presel = other;
+                else out.leaf = other;
+            }
         }
         return out;
     }
@@ -1337,7 +1367,7 @@ function createEngine(userConfig) {
             return true;
         },
 
-        // ---- flags (bspwm's marked) ----------------------------------------
+        // ---- flags (bspwm's marked, locked and private) -------------------
 
         flag: function (id, name) { return flagOf(id, name); },
 
@@ -1354,7 +1384,7 @@ function createEngine(userConfig) {
         },
 
         flagsOf: function (id) {
-            return { marked: flagOf(id, "marked") };
+            return { marked: flagOf(id, "marked"), locked: flagOf(id, "locked"), "private": flagOf(id, "private") };
         },
 
         // The tiled window in a space marked most recently, or null.
