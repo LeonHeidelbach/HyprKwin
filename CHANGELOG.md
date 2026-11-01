@@ -21,6 +21,8 @@
 - **Rotate and flip** the split around the window (bspwm's `-R` and `-F`).
 - **Locked and private windows** (bspwm's flags): the close key leaves a
   locked window open, and new windows split another tile than a private one.
+- **Walking the focus history** (bspwm's `node older/newer -f`) without the
+  walk reordering it.
 
 ### Fixed
 

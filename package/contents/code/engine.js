@@ -146,6 +146,8 @@ function createEngine(userConfig) {
     var masterOpts = {}; // space -> {factor, count, orientation}
     var zooms = {};      // space -> the node zoomed into (dwindle only)
     var stageSets = {};  // space -> [[window id, ...]]: windows sharing the stage
+    var activeId = null; // the window that has the focus, even one focused
+                         // without being recorded in focusOrder
     var flags = {};      // window id -> {marked: seq or 0, locked, private}
     var flagSeq = 0;     // marked windows are numbered, so the newest is known
     var preselSeq = 0;   // preselections are numbered, so the newest is known
@@ -517,6 +519,7 @@ function createEngine(userConfig) {
     function pickTargetLeaf(space, exclude) {
         var ls = leaves(roots[space]);
         var usable = function (id) { return id !== exclude && spaceOf[id] === space && leafOf[id] && isVisible(id); };
+        if (activeId && usable(activeId)) return leafOf[activeId];
         for (var i = 0; i < focusOrder.length; i++) {
             if (usable(focusOrder[i])) return leafOf[focusOrder[i]];
         }
@@ -612,6 +615,7 @@ function createEngine(userConfig) {
         detach(id);
         delete pseudoSizes[id];
         delete flags[id];
+        if (activeId === id) activeId = null;
         var i = focusOrder.indexOf(id);
         if (i >= 0) focusOrder.splice(i, 1);
     }
@@ -806,10 +810,15 @@ function createEngine(userConfig) {
             insert(id, space, placement(id, space, opts));
         },
 
-        focused: function (id) {
-            var i = focusOrder.indexOf(id);
-            if (i >= 0) focusOrder.splice(i, 1);
-            focusOrder.unshift(id);
+        // `quiet`: the window has the focus, but the focus history stays as
+        // it is (bspwm's history recording off), so it can be walked.
+        focused: function (id, quiet) {
+            activeId = id;
+            if (!quiet) {
+                var i = focusOrder.indexOf(id);
+                if (i >= 0) focusOrder.splice(i, 1);
+                focusOrder.unshift(id);
+            }
             var leaf = leafOf[id];
             if (leaf) {
                 var j = leaf.wins.indexOf(id);
@@ -947,6 +956,7 @@ function createEngine(userConfig) {
         // none: focusing one that cannot would make KWin go to it.
         lastFocused: function (space, visibleOnly) {
             var ok = function (id) { return !visibleOnly || isVisible(id); };
+            if (activeId && spaceOf[activeId] === space && leafOf[activeId] && ok(activeId)) return activeId;
             for (var i = 0; i < focusOrder.length; i++) {
                 if (spaceOf[focusOrder[i]] === space && leafOf[focusOrder[i]] && ok(focusOrder[i])) return focusOrder[i];
             }

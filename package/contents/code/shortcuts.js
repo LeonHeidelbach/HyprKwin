@@ -36,6 +36,8 @@ function shortcutList() {
         ["moveRight", "Move window right", ""],
         ["moveUp", "Move window up", ""],
         ["moveDown", "Move window down", ""],
+        ["focusOlder", "Focus the window used before this one", ""],
+        ["focusNewer", "Focus the window used after this one", ""],
 
         ["Resizing"],
         ["resizeLeft", "Move split left", "Meta+-"],

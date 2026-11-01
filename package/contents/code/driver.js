@@ -93,6 +93,9 @@ function createDriver(env) {
     var actions = null;             // action name -> function, filled in below
     var preselRects = [];           // [{id, owner, rect}] where preselected windows would go, on screen
     var lastPresels = [];           // and those drawn
+    // A window focused by walking the focus history: its activation is not
+    // recorded, so the walk can go on from where it got to.
+    var quietFocus = null;          // {id, at}
 
     // ---- helpers -----------------------------------------------------------
 
@@ -3583,6 +3586,8 @@ function createDriver(env) {
         flipVertical: function () { treeAction("Flip", function (id) { return engine.flip(id, "vertical"); }); },
         toggleLocked: function () { toggleFlag("locked", "Locked", "Unlocked"); },
         togglePrivate: function () { toggleFlag("private", "Private: new windows go elsewhere", "Not private"); },
+        focusOlder: function () { walkHistory(1); warp(); },
+        focusNewer: function () { walkHistory(-1); warp(); },
     };
     for (var r = 1; r <= 9; r++) {
         (function (n) {
@@ -3643,6 +3648,25 @@ function createDriver(env) {
         var st = active();
         if (!st) return;
         announce(engine.toggleFlag(st.id, name) ? on : off);
+    }
+
+    // bspwm's node older / newer -f, with history recording off: through the
+    // windows of this workspace in the order they were used, without the
+    // walk itself changing that order. Focusing any other way starts afresh.
+    function walkHistory(step) {
+        var st = active();
+        var space = currentSpace();
+        if (!space) return;
+        var list = engine.focusHistory().filter(function (id) {
+            var t = tracked[id];
+            if (!t || t.w.minimized || !onCurrentActivity(t.w)) return false;
+            return (isTiled(t) ? engine.spaceOf(id) : spaceOfWindow(t)) === space;
+        });
+        var at = st ? list.indexOf(st.id) : -1;
+        var next = at < 0 ? (step > 0 ? list[0] : null) : list[at + step];
+        if (!next || !tracked[next] || next === (st && st.id)) return;
+        quietFocus = { id: next, at: Date.now() };
+        activate(tracked[next].w);
     }
 
     function intoGroup(dir) {
@@ -3824,7 +3848,11 @@ function createDriver(env) {
                     engine.zoomReset(engine.spaceOf(st.id));
                     schedule();
                 }
-                engine.focused(st.id);
+                // Walking the focus history: this one has the focus, but
+                // the history stays as it was.
+                var quiet = !!quietFocus && quietFocus.id === st.id && Date.now() - quietFocus.at < 1000;
+                quietFocus = null;
+                engine.focused(st.id, quiet);
                 // A strip of columns is laid out around the focused one, so
                 // moving the focus scrolls it.
                 var space = engine.spaceOf(st.id);

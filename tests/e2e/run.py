@@ -4242,6 +4242,24 @@ def private_windows_are_not_split(sb):
     eq(sb.geometry("B", s), RIGHT, "B keeps its tile")
     eq(sb.geometry("C", s)[0] < 960, True, "C split A instead")
 
+
+@test
+def focus_history_walks_without_reordering(sb):
+    for t in "ABCD":
+        sb.spawn(t)                          # used A, B, C, D: D focused
+    for want in "CBA":
+        sb.invoke("focusOlder")
+        s = sb.state()
+        eq(s["active"], sb.window(want, s)["id"], "older: " + want)
+    sb.invoke("focusOlder")
+    eq(sb.state()["active"], sb.window("A")["id"], "the oldest is the end")
+    sb.invoke("focusNewer")
+    sb.invoke("focusNewer")
+    eq(sb.state()["active"], sb.window("C")["id"], "and back newer")
+    sb.invoke("focusRight")                  # a normal focus change: D
+    sb.invoke("focusOlder")
+    eq(sb.state()["active"], sb.window("C")["id"], "the walk starts again from the newest")
+
 def main():
     words = [w for w in sys.argv[1:] if not w.startswith("-")]
     selected = [t for t in TESTS if not words or any(w in t.__name__ for w in words)]

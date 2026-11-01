@@ -226,6 +226,7 @@ table below shows the US keys.
 | unbound | Balance the workspace (`balance`), reset the splits around the window (`equalize`) |
 | unbound | Rotate the split around the window (`rotateClockwise`, `rotateCounterClockwise`), flip it (`flipHorizontal`, `flipVertical`) |
 | unbound | Lock a window against the close key (`toggleLocked`), keep new windows from splitting it (`togglePrivate`) |
+| unbound | Walk the focus history (`focusOlder`, `focusNewer`) |
 
 Mouse: hold Meta and drag with the left button to move a window (drop it on
 another tile to re-tile there, or on another monitor), or with the right

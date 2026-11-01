@@ -438,3 +438,27 @@ Deno.test("private: a preselected tile is used before a private one; all private
     assertEquals(e.dump(S).b, { dir: "v", ratio: 0.5, a: "c", b: "b" }, "its own preselection still counts");
 });
 
+// ---- the focus history walk -------------------------------------------------------
+
+Deno.test("quiet focus: the window has the focus, but the history is left as it was", () => {
+    const e = eng();
+    open(e, ["a", "b", "c"]);
+    assertEquals(e.focusHistory(), ["c", "b", "a"]);
+    e.focused("a", true);
+    assertEquals(e.focusHistory(), ["c", "b", "a"], "not reordered");
+    assertEquals(e.lastFocused(S), "a", "but it is the one in use");
+    e.add("d", S);
+    assertEquals(e.dump(S).a, { dir: "v", ratio: 0.5, a: "a", b: "d" }, "a new window splits it");
+    e.focused("b");
+    assertEquals(e.focusHistory(), ["b", "c", "a"], "a normal focus records again");
+});
+
+Deno.test("quiet focus brings a group's window to the front", () => {
+    const e = eng();
+    open(e, ["a", "b"]);
+    e.toggleGroup("b");
+    e.joinGroup("a", "b");
+    e.focused("b", true);
+    assertEquals(e.groupOf("a").active, 0);
+});
+

@@ -281,6 +281,11 @@ tile that is neither private nor preselected instead, as bspwm's
 the focused one after all. Its own preselection still counts. Flags belong to
 the window, through layout changes, floating and moves.
 
+**Focus history** (`node older -f` / `newer -f`, with history recording off).
+`focusOlder` and `focusNewer` go back and forth through the windows of the
+workspace in the order you used them, without the walk itself changing that
+order; focusing a window any other way starts it afresh from the newest.
+
 ### Scratchpads
 
 `Meta+S` shows and hides the scratchpad, and `Meta+Alt+S` puts the focused
