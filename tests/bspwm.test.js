@@ -533,3 +533,88 @@ Deno.test("receptacle: the last window closing leaves the empty tiles, which the
     assertEquals(e.dump(S), "b");
     assertEquals(e.layout(S).windows.b, AREA);
 });
+
+// ---- found in review --------------------------------------------------------
+
+Deno.test("quiet focus: the window walked to stays in use on its workspace while the focus is elsewhere", () => {
+    const e = eng();
+    open(e, ["a", "b", "c"]);
+    open(e, ["x"], T);                       // another monitor's workspace
+    e.focused("a", true);                    // walked back to a
+    e.focused("x");                          // then over to the other monitor
+    assertEquals(e.lastFocused(S), "a", "a is still the one in use there");
+    e.setLayout(S, "stage");
+    assertEquals(e.layout(S).stage, ["a"], "and keeps the stage");
+    e.focused("b");
+    assertEquals(e.lastFocused(S), "b", "until another window there is focused");
+});
+
+Deno.test("a window put into a preselection or an empty tile outside the zoom is shown", () => {
+    let e = eng();
+    open(e, ["a", "b", "c"]);                // a | (b / c)
+    e.focused("a");
+    e.preselect("a", "down");
+    e.focused("c");
+    e.zoomIn("c");
+    e.zoomIn("c");
+    assertEquals(e.inZoom("a"), false, "a zoomed out of view");
+    e.moveToPreselection("c", S);
+    assertEquals(e.inZoom("c"), true, "c can be seen where it went");
+    e = eng();
+    open(e, ["a", "b", "c"]);
+    e.focused("a");
+    e.addReceptacle("a", "up");
+    e.focused("c");
+    e.zoomIn("c");
+    e.add("d", S);                           // fills a's empty tile, out of the zoom
+    assertEquals(e.inZoom("d"), true);
+    assertEquals(e.zoomInfo(S), null, "the zoom went");
+});
+
+Deno.test("a zoom left on nothing but an empty tile lapses", () => {
+    const e = eng();
+    open(e, ["a", "b"]);
+    e.addReceptacle("b", "down");            // a | (b / empty)
+    e.zoomIn("b");
+    assertEquals(e.zoomInfo(S) !== null, true);
+    e.remove("b");
+    assertEquals(e.zoomInfo(S), null);
+    assertEquals(e.inZoom("a"), true);
+});
+
+Deno.test("receptacles go when a new default layout takes the workspace out of dwindle", () => {
+    const e = eng();
+    open(e, ["a"]);
+    e.addReceptacle("a", "right");
+    e.setConfig({ defaultLayout: "master" });
+    assertEquals(e.receptacleCount(S), 0);
+    e.add("b", S);
+    assertEquals(e.windows(S), ["a", "b"], "b joins the end, as master has it");
+});
+
+Deno.test("a window moved without being sent (its monitor went away) takes no preselection", () => {
+    const e = eng();
+    open(e, ["x"], T);
+    e.preselect("x", "left");
+    open(e, ["a"]);
+    e.moveToSpace("a", T, { plain: true });
+    assertEquals(e.preselection("x").dir, "left");
+    assertEquals(e.dump(T), { dir: "h", ratio: 0.5, a: "x", b: "a" });
+});
+
+Deno.test("groupAll on a window alone makes no group of one", () => {
+    const e = eng();
+    open(e, ["a"]);
+    assertEquals(e.groupAll("a"), false);
+    assertEquals(e.isGrouped("a"), false);
+});
+
+Deno.test("a group's preselection is shown for the window on show in it", () => {
+    const e = eng();
+    open(e, ["a", "b"]);
+    e.toggleGroup("b");
+    e.joinGroup("a", "b");                   // [b, a], a in front
+    e.preselect("a", "down");
+    e.setVisibility((id) => id !== "a");     // a minimised
+    assertEquals(e.layout(S).presels.map((p) => p.id), ["b"]);
+});

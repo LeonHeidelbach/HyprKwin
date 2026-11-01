@@ -146,8 +146,8 @@ function createEngine(userConfig) {
     var masterOpts = {}; // space -> {factor, count, orientation}
     var zooms = {};      // space -> the node zoomed into (dwindle only)
     var stageSets = {};  // space -> [[window id, ...]]: windows sharing the stage
-    var activeId = null; // the window that has the focus, even one focused
-                         // without being recorded in focusOrder
+    var walked = {};     // space -> the window the focus history walk got to
+                         // there: in use, but not recorded in focusOrder
     var flags = {};      // window id -> {marked: seq or 0, locked, private}
     var flagSeq = 0;     // marked windows are numbered, so the newest is known
     var preselSeq = 0;   // preselections and receptacles are numbered, so the
@@ -396,7 +396,8 @@ function createEngine(userConfig) {
         if (!z) return null;
         var top = z;
         while (top.parent) top = top.parent;
-        if (top !== roots[space] || z === roots[space] || !shown(z) || modeOf(space) !== "dwindle") {
+        var holds = leaves(z).some(function (l) { return !l.receptacle && shown(l); });
+        if (top !== roots[space] || z === roots[space] || !holds || modeOf(space) !== "dwindle") {
             delete zooms[space];
             return null;
         }
@@ -521,7 +522,7 @@ function createEngine(userConfig) {
     function pickTargetLeaf(space, exclude) {
         var ls = leaves(roots[space]).filter(function (l) { return !l.receptacle; });
         var usable = function (id) { return id !== exclude && spaceOf[id] === space && leafOf[id] && isVisible(id); };
-        if (activeId && usable(activeId)) return leafOf[activeId];
+        if (walked[space] && usable(walked[space])) return leafOf[walked[space]];
         for (var i = 0; i < focusOrder.length; i++) {
             if (usable(focusOrder[i])) return leafOf[focusOrder[i]];
         }
@@ -627,7 +628,7 @@ function createEngine(userConfig) {
         detach(id);
         delete pseudoSizes[id];
         delete flags[id];
-        if (activeId === id) activeId = null;
+        for (var sp in walked) if (walked[sp] === id) delete walked[sp];
         var i = focusOrder.indexOf(id);
         if (i >= 0) focusOrder.splice(i, 1);
     }
@@ -765,7 +766,7 @@ function createEngine(userConfig) {
     // else the newest receptacle, else the automatic split, which never
     // splits a private window while there is another to split.
     function placement(id, space, opts) {
-        if (!roots[space] || modeOf(space) !== "dwindle" || (opts && (opts.side || opts.target))) return opts;
+        if (!roots[space] || modeOf(space) !== "dwindle" || (opts && (opts.side || opts.target || opts.plain))) return opts;
         var out = copyOpts(opts);
         var focus = pickTargetLeaf(space, id);
         if (focus && focus.presel) {
@@ -787,6 +788,13 @@ function createEngine(userConfig) {
         return out;
     }
 
+    // A window put into a preselection or an empty tile outside the zoom
+    // would wait off screen: the zoom goes, so it can be seen.
+    function showPlaced(id) {
+        var space = spaceOf[id], z = space ? zoomOf(space) : null;
+        if (z && leafOf[id] && !inside(leafOf[id], z)) delete zooms[space];
+    }
+
     // The windows of the tiles in a space that are shown, in layout order,
     // without its empty tiles.
     function tilesOf(space) {
@@ -804,6 +812,10 @@ function createEngine(userConfig) {
 
         setConfig: function (c) {
             for (var key in c) cfg[key] = c[key];
+            // A new default layout can take a workspace out of dwindle.
+            Object.keys(roots).forEach(function (space) {
+                if (modeOf(space) !== "dwindle") dropReceptacles(space);
+            });
         },
 
         setArea: function (space, area) {
@@ -842,6 +854,7 @@ function createEngine(userConfig) {
                 opts = placement(id, space, opts);
             }
             insert(id, space, opts);
+            showPlaced(id);
         },
 
         remove: function (id) { forget(id); },
@@ -855,12 +868,17 @@ function createEngine(userConfig) {
             if (spaceOf[id] === space && leafOf[id]) return;
             detach(id);
             insert(id, space, placement(id, space, opts));
+            showPlaced(id);
         },
 
         // `quiet`: the window has the focus, but the focus history stays as
         // it is (bspwm's history recording off), so it can be walked.
         focused: function (id, quiet) {
-            activeId = id;
+            // The window walked to stays the one in use on its workspace
+            // until another there is focused the usual way, wherever the
+            // focus goes meanwhile.
+            if (quiet && spaceOf[id]) walked[spaceOf[id]] = id;
+            else if (spaceOf[id]) delete walked[spaceOf[id]];
             if (!quiet) {
                 var i = focusOrder.indexOf(id);
                 if (i >= 0) focusOrder.splice(i, 1);
@@ -1006,7 +1024,8 @@ function createEngine(userConfig) {
         // none: focusing one that cannot would make KWin go to it.
         lastFocused: function (space, visibleOnly) {
             var ok = function (id) { return !visibleOnly || isVisible(id); };
-            if (activeId && spaceOf[activeId] === space && leafOf[activeId] && ok(activeId)) return activeId;
+            var w = walked[space];
+            if (w && spaceOf[w] === space && leafOf[w] && ok(w)) return w;
             for (var i = 0; i < focusOrder.length; i++) {
                 if (spaceOf[focusOrder[i]] === space && leafOf[focusOrder[i]] && ok(focusOrder[i])) return focusOrder[i];
             }
@@ -1068,10 +1087,6 @@ function createEngine(userConfig) {
                     if (r && dwindle) result.receptacles.push({ id: "receptacle-" + leaf.id, seq: leaf.seq, rect: gappedFull(r) });
                     return;
                 }
-                if (r && leaf.presel && dwindle) {
-                    result.presels.push({ id: leaf.wins[leaf.active], dir: leaf.presel.dir, ratio: preselShare(leaf.presel),
-                                          seq: leaf.presel.seq, rect: gappedFull(preselPart(r, leaf.presel)) });
-                }
                 if (!r) {
                     // Scrolled out of view, or waiting beside the stage: the
                     // driver parks it, at its size on the stage if it has one.
@@ -1087,6 +1102,11 @@ function createEngine(userConfig) {
                     for (var vi = 0; vi < leaf.wins.length; vi++) {
                         if (isVisible(leaf.wins[vi])) { leaf.active = vi; break; }
                     }
+                }
+                // Owned by the window in front, once that is one on show.
+                if (leaf.presel && dwindle) {
+                    result.presels.push({ id: leaf.wins[leaf.active], dir: leaf.presel.dir, ratio: preselShare(leaf.presel),
+                                          seq: leaf.presel.seq, rect: gappedFull(preselPart(r, leaf.presel)) });
                 }
                 if (leaf.grouped) {
                     var barH = cfg.groupBarHeight;
@@ -1344,6 +1364,7 @@ function createEngine(userConfig) {
             if (!target) return false;
             if (leafOf[id]) detach(id);
             insert(id, space, { presel: target });
+            showPlaced(id);
             return true;
         },
 
@@ -1374,6 +1395,7 @@ function createEngine(userConfig) {
             if (leafOf[id]) detach(id);
             spaceOf[id] = space;
             fillReceptacle(r, id);
+            showPlaced(id);
             return true;
         },
 
@@ -1558,6 +1580,7 @@ function createEngine(userConfig) {
                 if (l === leaf) return;
                 l.wins.forEach(function (w) { if (isVisible(w)) others.push(w); });
             });
+            if (!others.length) return false;
             var current = leaf.wins[leaf.active];
             leaf.grouped = true;
             others.forEach(function (w) {

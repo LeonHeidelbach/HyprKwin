@@ -383,9 +383,9 @@ function createDriver(env) {
                     var st = tracked[wid];
                     if (st.desktop === d.id && !isTiled(st) && !st.pinned && !st.special && st.w.output === from) floating.push(st);
                 }
-                if (!moved.length && !floating.length) continue;
+                if (!moved.length && !floating.length && !engine.receptacleCount(space)) continue;
                 log("workspace", d.id, "shown on", to.name, "- its windows follow from", from.name);
-                if (moved.length) {
+                if (moved.length || engine.receptacleCount(space)) {
                     engine.moveSpace(space, spaceFor(d, to));
                     carryRuled(space, spaceFor(d, to));
                     moved.forEach(function (wid) { if (tracked[wid]) syncDesktop(tracked[wid]); });
@@ -1025,11 +1025,15 @@ function createDriver(env) {
         var space = spaceOfWindow(st), best = null;
         for (var target in groupAuto) {
             var t = tracked[target];
-            if (!t || !isTiled(t)) {
+            // Asked for on one workspace: a window that has left it (or
+            // closed) takes the request with it. One floating for a moment
+            // keeps it for when it is back.
+            if (!t || (isTiled(t) && engine.spaceOf(target) !== groupAuto[target].space)) {
                 delete groupAuto[target];
                 continue;
             }
-            if (space && engine.spaceOf(target) === space && (!best || groupAuto[target].at > groupAuto[best].at)) best = target;
+            if (!isTiled(t) || !space || groupAuto[target].space !== space) continue;
+            if (!best || groupAuto[target].at > groupAuto[best].at) best = target;
         }
         if (best) {
             if (groupAuto[best].once) delete groupAuto[best];
@@ -1264,7 +1268,9 @@ function createDriver(env) {
             return;
         }
         var space = spaceOfWindow(st);
-        if (space && space !== engine.spaceOf(st.id)) engine.moveToSpace(st.id, space, {});
+        // One that only came across because its monitor went away is not
+        // being sent anywhere: it takes no preselection or empty tile there.
+        if (space && space !== engine.spaceOf(st.id)) engine.moveToSpace(st.id, space, { plain: !wasMoved });
         schedule();
     }
 
@@ -3625,7 +3631,7 @@ function createDriver(env) {
         groupStopAddNew: function () {
             var space = currentSpace(), any = false;
             for (var target in groupAuto) {
-                if (!tracked[target] || engine.spaceOf(target) === space) {
+                if (!tracked[target] || groupAuto[target].space === space) {
                     delete groupAuto[target];
                     any = true;
                 }
@@ -3735,7 +3741,7 @@ function createDriver(env) {
     function addToGroup(once) {
         var st = active();
         if (!st || !isTiled(st)) return;
-        groupAuto[st.id] = { once: once, at: Date.now() };
+        groupAuto[st.id] = { once: once, at: Date.now(), space: engine.spaceOf(st.id) };
         announce(once ? "The next window joins this group" : "New windows join this group");
     }
 

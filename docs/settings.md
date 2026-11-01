@@ -241,7 +241,8 @@ A preselection belongs to its window's tile (in a group, to the group's
 tile), and several windows can each have one. Only the focused window's is
 used; with none there, the next window goes where it always would. A window
 sent to another workspace also goes into the preselection of the window
-focused there, as bspwm sends one. A preselection lasts until it is used or
+focused there, as bspwm sends one (but not one that only comes across
+because its monitor was unplugged). A preselection lasts until it is used or
 cancelled, or its window closes, floats or leaves the workspace; a
 preselection on a window you swap goes with it. Preselections only mean
 something in dwindle: elsewhere the actions say so and do nothing, and one
@@ -277,8 +278,10 @@ is left open by HyprKwin's close key (and a right-click on its stage
 preview); its own close button still closes it. `togglePrivate` keeps the
 automatic split away from a window: a new window splits the largest other
 tile that is neither private nor preselected instead, as bspwm's
-`find_public` picks one, and only when every tile is private does it split
-the focused one after all. Its own preselection still counts. Flags belong to
+`find_public` picks one; failing that it takes the largest preselected
+tile's preselection (as bspwm does, the one case where a preselection that
+is not the focused window's is used), and only when every tile is private
+does it split the focused one after all. Its own preselection still counts. Flags belong to
 the window, through layout changes, floating and moves.
 
 **Focus history** (`node older -f` / `newer -f`, with history recording off).
@@ -290,7 +293,8 @@ order; focusing a window any other way starts it afresh from the newest.
 into the focused window's group (making it one). `groupAddNext` makes the
 next window opened on the workspace join the focused window's group, once;
 `groupAddNew` does so for every new window until `groupStopAddNew`. The
-group is made when the first window joins.
+group is made when the first window joins, and the request goes when its
+window leaves the workspace or closes.
 
 **Receptacles** (`node -i`). `receptacleLeft`, `…Down`, `…Up` and `…Right`
 make an empty tile on that side of the focused window, shown as a
