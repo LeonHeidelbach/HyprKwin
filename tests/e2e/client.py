@@ -10,9 +10,12 @@ from PySide6.QtWidgets import QApplication, QDialog, QMenu, QWidget
 
 
 class Canvas(QWidget):
-    def __init__(self, title, color=None, menu=False, lag=0):
+    def __init__(self, title, color=None, menu=False, lag=0, log=None):
         super().__init__()
         self.lag = lag
+        # When each new size arrives (KWin's configure, as Qt applies it)
+        # and when it has been drawn at it: "<time> size|drawn <w>x<h>".
+        self.log = open(log, "a", buffering=1) if log else None
         self.color = QColor(color) if color else QColor.fromHsvF(random.random(), 0.5, 0.8)
         self.setWindowTitle(title)
         self.menu = None
@@ -27,6 +30,12 @@ class Canvas(QWidget):
         if self.menu:
             self.menu.popup(event.globalPos())
 
+    def resizeEvent(self, event):
+        if self.log:
+            import time
+            self.log.write("%.4f size %dx%d\n" % (time.time(), event.size().width(), event.size().height()))
+        super().resizeEvent(event)
+
     def paintEvent(self, _):
         if self.lag:
             # A slow app: it answers each new size this much later.
@@ -39,6 +48,9 @@ class Canvas(QWidget):
         f.setPixelSize(28)
         p.setFont(f)
         p.drawText(self.rect(), Qt.AlignCenter, self.windowTitle())
+        if self.log:
+            import time
+            self.log.write("%.4f drawn %dx%d\n" % (time.time(), self.width(), self.height()))
 
 
 def main():
@@ -54,6 +66,7 @@ def main():
     ap.add_argument("--activate-on", help="ask to be activated when this file appears (like a relaunched single-instance app)")
     ap.add_argument("--tool", action="store_true", help="a frameless tool window, the way launchers such as Albert open")
     ap.add_argument("--move-to", help="X,Y: move itself there a moment after opening, as Steam does (X11 only)")
+    ap.add_argument("--log", help="file to note each new size and each repaint in, with the time")
     ap.add_argument("--maximized", action="store_true", help="open maximized (as a browser restoring its state does)")
     ap.add_argument("--lag", type=int, default=0, help="ms each repaint takes (an app slow to take a new size)")
     ap.add_argument("--move-times", type=int, default=1, help="how many times to repeat --move-to, 400 ms apart")
@@ -62,7 +75,7 @@ def main():
     QGuiApplication.setDesktopFileName(args.app_id)
     app = QApplication(sys.argv[:1])
     w, h = (int(v) for v in args.size.split("x"))
-    win = Canvas(args.title, args.color, menu=args.menu, lag=args.lag)
+    win = Canvas(args.title, args.color, menu=args.menu, lag=args.lag, log=args.log)
     win.resize(w, h)
     if args.fixed:
         win.setFixedSize(QSize(w, h))

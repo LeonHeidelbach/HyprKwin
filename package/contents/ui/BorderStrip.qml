@@ -28,10 +28,9 @@ Window {
     title: "HyprKwin overlay"
     color: "transparent"
     flags: Qt.X11BypassWindowManagerHint | Qt.FramelessWindowHint | Qt.WindowDoesNotAcceptFocus | Qt.WindowTransparentForInput
-    x: isFinite(area.x) ? area.x : 0
-    y: isFinite(area.y) ? area.y : 0
-    width: usable(area.width) ? area.width : 1
-    height: usable(area.height) ? area.height : 1
+    // The window takes its place in one go (see place()), not by binding x,
+    // y, width and height, each of which would move it on its own: four
+    // geometry changes for every strip each time a border moves.
 
     // Never show a window with a zero, negative or NaN size: KWin cannot make
     // a framebuffer for it, and the window is then stuck at a fallback size.
@@ -40,53 +39,88 @@ Window {
     }
     readonly property bool ready: usable(area.width) && usable(area.height) && isFinite(area.x) && isFinite(area.y)
 
+    function place() {
+        const gx = isFinite(area.x) ? area.x : 0, gy = isFinite(area.y) ? area.y : 0;
+        const gw = usable(area.width) ? area.width : 1, gh = usable(area.height) ? area.height : 1;
+        if (x !== gx || y !== gy || width !== gw || height !== gh) setGeometry(gx, gy, gw, gh);
+    }
+
+    // Only when that changes: showing a window already shown is not free,
+    // and this runs for every strip each time the borders are redrawn.
     function sync() {
-        if (shown && !overlaysHidden && ready) show();
-        else hide();
+        const want = shown && !overlaysHidden && ready;
+        if (want && !visible) show();
+        else if (!want && visible) hide();
     }
     onReadyChanged: sync()
     onShownChanged: sync()
-    onAreaChanged: sync()
-    Component.onCompleted: sync()
+    onAreaChanged: {
+        place();
+        sync();
+    }
+    Component.onCompleted: {
+        place();
+        sync();
+    }
     // KWin keeps shown internal windows alive when the script's QML engine
     // goes away, so make sure they disappear with us.
     Component.onDestruction: hide()
 
-    Shape {
-        id: ringShape
-        x: -strip.offset.x
-        y: -strip.offset.y
-        width: strip.ring.width
-        height: strip.ring.height
-        preferredRendererType: Shape.CurveRenderer
+    // Square corners in one colour, the usual case: the strip is simply
+    // filled. Drawing the ring as a shape costs a fresh tessellation every
+    // time the window it surrounds changes size, for every strip, which a
+    // drag does at every step.
+    readonly property bool plain: radius <= 0 && Qt.colorEqual(stripColor, stripColor2)
 
-        // The gradient line crosses the whole ring at the given angle, so its
-        // two colours land on opposite corners, as Hyprland draws it.
-        readonly property real rad: strip.angle * Math.PI / 180
-        readonly property real reach: Math.abs(width / 2 * Math.cos(rad)) + Math.abs(height / 2 * Math.sin(rad))
+    Rectangle {
+        anchors.fill: parent
+        visible: strip.plain
+        color: strip.stripColor
+    }
 
-        ShapePath {
-            strokeColor: "transparent"
-            strokeWidth: -1
-            fillRule: ShapePath.OddEvenFill
-            fillGradient: LinearGradient {
-                x1: strip.ring.width / 2 - Math.cos(ringShape.rad) * ringShape.reach
-                y1: strip.ring.height / 2 - Math.sin(ringShape.rad) * ringShape.reach
-                x2: strip.ring.width / 2 + Math.cos(ringShape.rad) * ringShape.reach
-                y2: strip.ring.height / 2 + Math.sin(ringShape.rad) * ringShape.reach
-                GradientStop { position: 0; color: strip.stripColor }
-                GradientStop { position: 1; color: strip.stripColor2 }
-            }
-            PathRectangle {
-                x: 0; y: 0
-                width: strip.ring.width; height: strip.ring.height
-                radius: strip.radius
-            }
-            PathRectangle {
-                x: strip.thickness; y: strip.thickness
-                width: Math.max(0, strip.ring.width - 2 * strip.thickness)
-                height: Math.max(0, strip.ring.height - 2 * strip.thickness)
-                radius: Math.max(0, strip.radius - strip.thickness)
+    Loader {
+        active: !strip.plain
+        sourceComponent: ringComponent
+    }
+
+    Component {
+        id: ringComponent
+        Shape {
+            id: ringShape
+            x: -strip.offset.x
+            y: -strip.offset.y
+            width: strip.ring.width
+            height: strip.ring.height
+            preferredRendererType: Shape.CurveRenderer
+
+            // The gradient line crosses the whole ring at the given angle, so its
+            // two colours land on opposite corners, as Hyprland draws it.
+            readonly property real rad: strip.angle * Math.PI / 180
+            readonly property real reach: Math.abs(width / 2 * Math.cos(rad)) + Math.abs(height / 2 * Math.sin(rad))
+
+            ShapePath {
+                strokeColor: "transparent"
+                strokeWidth: -1
+                fillRule: ShapePath.OddEvenFill
+                fillGradient: LinearGradient {
+                    x1: strip.ring.width / 2 - Math.cos(ringShape.rad) * ringShape.reach
+                    y1: strip.ring.height / 2 - Math.sin(ringShape.rad) * ringShape.reach
+                    x2: strip.ring.width / 2 + Math.cos(ringShape.rad) * ringShape.reach
+                    y2: strip.ring.height / 2 + Math.sin(ringShape.rad) * ringShape.reach
+                    GradientStop { position: 0; color: strip.stripColor }
+                    GradientStop { position: 1; color: strip.stripColor2 }
+                }
+                PathRectangle {
+                    x: 0; y: 0
+                    width: strip.ring.width; height: strip.ring.height
+                    radius: strip.radius
+                }
+                PathRectangle {
+                    x: strip.thickness; y: strip.thickness
+                    width: Math.max(0, strip.ring.width - 2 * strip.thickness)
+                    height: Math.max(0, strip.ring.height - 2 * strip.thickness)
+                    radius: Math.max(0, strip.radius - strip.thickness)
+                }
             }
         }
     }

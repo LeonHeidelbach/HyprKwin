@@ -61,10 +61,24 @@ Item {
         onTriggered: root.driver.relayout()
     }
 
+    // The overlays follow the windows at most once in a frame or so: in a
+    // drag every neighbour's new size arrives on its own, and each would
+    // otherwise move every border again. The first change after a quiet
+    // spell is drawn at once.
     Timer {
         id: decorationTimer
         interval: 0
-        onTriggered: root.driver.updateDecorations()
+        property double last: 0
+        readonly property int gap: 12
+        onTriggered: {
+            last = Date.now();
+            root.driver.updateDecorations();
+        }
+    }
+    function scheduleDecorations() {
+        if (decorationTimer.running) return;
+        decorationTimer.interval = Math.max(0, decorationTimer.gap - (Date.now() - decorationTimer.last));
+        decorationTimer.start();
     }
 
     // One-shot callback for the driver (the end of a divider slide).
@@ -691,6 +705,7 @@ Item {
     }
 
     function parkBorder(border, cfg) {
+        border.sig = "";
         border.frame = parkedFrame;
         border.active = false;
         border.borderWidth = Math.max(1, cfg.borderSize || 0);
@@ -718,12 +733,25 @@ Item {
                 old.destroy();
             }
         }
+        // A border is only touched when it changed: during a drag the
+        // decorations are redone every few milliseconds, for every window, and
+        // re-setting each strip's bindings is most of what that costs.
+        const look = [cfg.borderSize, cfg.borderRadius, cfg.activeBorderSource, cfg.activeBorderColor2,
+                      cfg.borderGradientAngle, cfg.borderGradientSpin, cfg.inactiveBorderSource,
+                      cfg.activeBorderColor, cfg.inactiveBorderColor, cfg.markedBorderColor].join("|");
         for (const entry of list) {
             let border = borderObjects[entry.id];
             if (!border) {
                 border = spareBorders.pop() || newBorder();
                 borderObjects[entry.id] = border;
             }
+            const sig = [entry.x, entry.y, entry.width, entry.height, entry.active, !!entry.marked,
+                         JSON.stringify(entry.cuts || [])].join("|") + "|" + look;
+            if (border.sig === sig) {
+                border.revision = revision;     // shown again if it was closed behind our back
+                continue;
+            }
+            border.sig = sig;
             border.frame = entry;
             border.active = entry.active;
             border.borderWidth = cfg.borderSize || 0;
@@ -908,7 +936,7 @@ Item {
             rect: (x, y, w, h) => Qt.rect(x, y, w, h),
             log: msg => console.warn(msg),
             scheduleLayout: () => layoutTimer.restart(),
-            scheduleDecorations: () => decorationTimer.restart(),
+            scheduleDecorations: () => root.scheduleDecorations(),
             warpPointer: () => warpCall.call(),
             keyOwner: (code, callback) => root.keyOwner(code, callback),
             shortcutInfos: (callback) => root.shortcutInfos(callback),

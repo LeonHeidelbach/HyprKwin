@@ -25,6 +25,7 @@ Item {
     property bool overlaysHidden: false
     property int revision: 0
     property int radius: 0
+    property string sig: ""        // what it was last drawn for (see syncBorders)
 
     readonly property bool shown: frame !== null && borderWidth > 0
     // Kirigami's theme only resolves inside a window, hence reading it off a
@@ -152,7 +153,9 @@ Item {
         offset: Qt.point(area.x - border.outer.x, area.y - border.outer.y)
         radius: border.r
         thickness: border.b
-        area: border.cut(border.outer.x, border.outer.y, border.r, border.r)
+        // Nothing to draw without rounded corners: kept still, so a
+        // border that moves does not move these (hidden) windows as well.
+        area: border.r > 0 ? border.cut(border.outer.x, border.outer.y, border.r, border.r) : Qt.rect(0, 0, 0, 0)
     }
     BorderStrip {
         id: topRight
@@ -166,7 +169,9 @@ Item {
         offset: Qt.point(area.x - border.outer.x, area.y - border.outer.y)
         radius: border.r
         thickness: border.b
-        area: border.cut(border.outer.x + border.outer.width - border.r, border.outer.y, border.r, border.r)
+        // Nothing to draw without rounded corners: kept still, so a
+        // border that moves does not move these (hidden) windows as well.
+        area: border.r > 0 ? border.cut(border.outer.x + border.outer.width - border.r, border.outer.y, border.r, border.r) : Qt.rect(0, 0, 0, 0)
     }
     BorderStrip {
         id: bottomLeft
@@ -180,7 +185,9 @@ Item {
         offset: Qt.point(area.x - border.outer.x, area.y - border.outer.y)
         radius: border.r
         thickness: border.b
-        area: border.cut(border.outer.x, border.outer.y + border.outer.height - border.r, border.r, border.r)
+        // Nothing to draw without rounded corners: kept still, so a
+        // border that moves does not move these (hidden) windows as well.
+        area: border.r > 0 ? border.cut(border.outer.x, border.outer.y + border.outer.height - border.r, border.r, border.r) : Qt.rect(0, 0, 0, 0)
     }
     BorderStrip {
         id: bottomRight
@@ -194,6 +201,8 @@ Item {
         offset: Qt.point(area.x - border.outer.x, area.y - border.outer.y)
         radius: border.r
         thickness: border.b
-        area: border.cut(border.outer.x + border.outer.width - border.r, border.outer.y + border.outer.height - border.r, border.r, border.r)
+        // Nothing to draw without rounded corners: kept still, so a
+        // border that moves does not move these (hidden) windows as well.
+        area: border.r > 0 ? border.cut(border.outer.x + border.outer.width - border.r, border.outer.y + border.outer.height - border.r, border.r, border.r) : Qt.rect(0, 0, 0, 0)
     }
 }

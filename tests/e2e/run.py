@@ -2074,6 +2074,28 @@ def mouse_resize_leaves_slow_apps_in_their_tiles(sb):
     eq(sb.geometry("B", s), RIGHT, "B too")
 
 
+@test(config={"ShowInactiveBorders": "true"})
+def a_drag_only_resizes_the_windows_beside_its_edge(sb):
+    """Each step of a drag asks the windows the edge moves for their new size
+    once, and nothing of the others; nothing is asked twice."""
+    logs = {}
+    for t in "ABCD":                         # A | (B / (C | D))
+        logs[t] = sb.base / ("sizes-" + t)
+        sb.spawn(t, extra=["--log", str(logs[t])])
+    sb.settle(1.0)
+    for t in "ABCD":
+        logs[t].write_text("")
+    x, y, w, h = sb.geometry("D")
+    fi = sb.input()
+    fi.drag((x + 20, y + h // 2), (x - 130, y + h // 2), btn=BTN_RIGHT, modifiers=("meta",), steps=15)
+    sb.settle(1.0)
+    sizes = {t: [l.split()[2] for l in logs[t].read_text().splitlines() if l.split()[1] == "size"] for t in "ABCD"}
+    eq((sizes["A"], sizes["B"]), ([], []), "A and B are not beside the edge: nothing asked of them")
+    for t in "CD":
+        eq(0 < len(sizes[t]) <= 16, True, "%s asked once a step: %r" % (t, sizes[t]))
+        eq(all(a != b for a, b in zip(sizes[t], sizes[t][1:])), True, "%s never asked for the size it has: %r" % (t, sizes[t]))
+
+
 @test(config={"FocusFollowsMouse": "true"})
 def focus_follows_mouse(sb):
     sb.spawn("A")
