@@ -3530,6 +3530,13 @@ function createDriver(env) {
             var space = currentSpace();
             if (space && engine.cancelPreselections(space)) relayout();
         },
+        balance: function () {
+            var space = currentSpace();
+            if (!space || !dwindleOnly(space, "Balance")) return;
+            engine.balance(space);
+            relayout();
+        },
+        equalize: function () { treeAction("Equalize", function (id) { return engine.equalize(id); }); },
     };
     for (var r = 1; r <= 9; r++) {
         (function (n) {
@@ -3577,6 +3584,13 @@ function createDriver(env) {
         if (!st || !isTiled(st) || !dwindleOnly(engine.spaceOf(st.id), "Preselection")) return;
         engine.preselectRatio(st.id, ratio);
         relayout();
+    }
+
+    // A change to the split the focused window is in.
+    function treeAction(what, fn) {
+        var st = active();
+        if (!st || !isTiled(st) || !dwindleOnly(engine.spaceOf(st.id), what)) return;
+        if (fn(st.id)) relayout();
     }
 
     function intoGroup(dir) {

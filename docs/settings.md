@@ -248,6 +248,13 @@ made earlier waits, unseen, until the workspace is back in dwindle. They
 are not kept from one session to the next, as where windows sit in the tree
 is not.
 
+**Balance and equalize.** `balance` gives every window on the workspace the
+same area (bspwm's `node @/ -B`): each split gives its first side as many
+parts as it has tiles. A group counts as one tile, and a minimised window as
+none. `equalize` puts the splits around the focused window, its parent split
+and everything in it, back to the default ratio (`node @parent
+--equalize`).
+
 ### Scratchpads
 
 `Meta+S` shows and hides the scratchpad, and `Meta+Alt+S` puts the focused

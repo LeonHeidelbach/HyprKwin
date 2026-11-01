@@ -39,6 +39,7 @@ Alacritty, Dolphin, Gwenview and `hyprkwinctl`.*
 - **After bspwm** (none of it on a key until you give it one; see
   [Preselection and the tree](docs/settings.md#preselection-and-the-tree-after-bspwm)):
   - preselect where the next window goes, its area shown until it arrives
+  - balance the tree, or reset part of it
 - **Focus indicator** you choose: a coloured border in the gap (one colour,
   your colour scheme's accent, or a gradient, with rounded corners if you
   like), Plasma's own window decorations, or nothing.

@@ -117,6 +117,8 @@ function shortcutList() {
         ["preselectRatio9", "Preselection ratio 0.9", ""],
         ["preselectCancel", "Cancel this window's preselection", ""],
         ["preselectCancelAll", "Cancel every preselection on the workspace", ""],
+        ["balance", "Balance the workspace: every window the same area", ""],
+        ["equalize", "Reset the splits around the window to the default ratio", ""],
 
         ["Other"],
         ["showKeys", "Show keyboard shortcuts", "Meta+K"],

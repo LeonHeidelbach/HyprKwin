@@ -11,6 +11,9 @@
   default, bspwm's `#27293b`). A `hyprland.conf` import brings
   `layoutmsg, preselect` binds across. The new actions have no keys; see
   [Preselection and the tree](docs/settings.md#preselection-and-the-tree-after-bspwm).
+- **Balance and equalize** (bspwm's `-B` and `--equalize`): every window on
+  the workspace the same area, or the splits around the window back to the
+  default ratio.
 
 ### Fixed
 

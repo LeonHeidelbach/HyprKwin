@@ -4159,6 +4159,21 @@ def preselection_needs_dwindle(sb):
     eq(len(osd_boxes(sb)), 1, "says so")
     eq(sb.window("A")["presel"], None, "and does nothing")
 
+
+@test
+def balance_and_equalize(sb):
+    for t in "ABCD":
+        sb.spawn(t)                          # A | (B / (C | D))
+    sb.invoke("balance")
+    s = sb.state()
+    areas = [sb.geometry(t, s)[2] * sb.geometry(t, s)[3] for t in "ABCD"]
+    eq(max(areas) / min(areas) < 1.05, True, "every window the same area: %r" % (areas,))
+    sb.invoke("equalize")                    # D: C | D back to halves
+    s = sb.state()
+    c, d = sb.geometry("C", s), sb.geometry("D", s)
+    eq(abs(c[2] - d[2]) <= 5, True, "C and D share their split evenly (but for the gap at the edge): %r %r" % (c, d))
+    eq(sb.geometry("A", s)[2] < 600, True, "the rest stays balanced")
+
 def main():
     words = [w for w in sys.argv[1:] if not w.startswith("-")]
     selected = [t for t in TESTS if not words or any(w in t.__name__ for w in words)]

@@ -1213,6 +1213,44 @@ function createEngine(userConfig) {
             });
         },
 
+        // Give every split in the space the share that leaves each window the
+        // same area (bspwm node @/ -B): the first side gets as many parts as
+        // it shows tiles. A group counts once; a hidden side keeps its split.
+        balance: function (space) {
+            if (!roots[space] || modeOf(space) !== "dwindle") return false;
+            var changed = false;
+            var count = function (n) {
+                if (!n || !shown(n)) return 0;
+                if (n.leaf) return 1;
+                var a = count(n.a), b = count(n.b);
+                if (a > 0 && b > 0) {
+                    var r = a / (a + b);
+                    if (Math.abs(n.ratio - r) > 1e-9) changed = true;
+                    n.ratio = r;
+                }
+                return a + b;
+            };
+            count(roots[space]);
+            return changed;
+        },
+
+        // Every split in the window's parent split, and below it, back to the
+        // default ratio (bspwm node @parent --equalize).
+        equalize: function (id) {
+            var leaf = leafOf[id];
+            if (!leaf || !leaf.parent || modeOf(spaceOf[id]) !== "dwindle") return false;
+            var changed = false, share = defaultShare();
+            var reset = function (n) {
+                if (!n || n.leaf || !shown(n)) return;
+                if (Math.abs(n.ratio - share) > 1e-9) changed = true;
+                n.ratio = share;
+                reset(n.a);
+                reset(n.b);
+            };
+            reset(leaf.parent);
+            return changed;
+        },
+
 
         // ---- groups -------------------------------------------------------
 

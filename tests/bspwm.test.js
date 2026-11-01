@@ -241,3 +241,47 @@ Deno.test("presel: a minimised window's preselection is neither drawn nor used",
     assertEquals(e.preselection("b").dir, "down", "a hidden window is not the focused tile");
 });
 
+// ---- balance, equalize --------------------------------------------------------
+
+Deno.test("balance: every window gets the same area", () => {
+    const e = eng();
+    open(e, ["a", "b", "c", "d"]);           // a | (b / (c | d))
+    e.balance(S);
+    assertEquals(e.dump(S), { dir: "h", ratio: 0.25, a: "a", b: { dir: "v", ratio: 0.333, a: "b", b: { dir: "h", ratio: 0.5, a: "c", b: "d" } } });
+    const l = e.layout(S);
+    const areas = ["a", "b", "c", "d"].map((id) => l.windows[id].width * l.windows[id].height);
+    assert(areas.every((x) => Math.abs(x - 1920 * 1080 / 4) < 2000), "equal areas: " + areas);
+});
+
+Deno.test("balance: a group counts once, a hidden window not at all", () => {
+    const e = eng();
+    open(e, ["a", "b", "c", "d"]);           // a | (b / (c | d))
+    e.toggleGroup("a");
+    e.joinGroup("b", "a");                   // [a, b] | (c | d)
+    e.balance(S);
+    assertEquals(e.dump(S).ratio, 0.333);
+    e.setVisibility((id) => id !== "d");
+    e.balance(S);
+    assertEquals(e.dump(S).ratio, 0.5, "d gives its share to c");
+    assertEquals(e.dump(S).b.ratio, 0.5, "and its own split keeps its ratio");
+    assertEquals(e.balance("nowhere"), false);
+    e.setLayout(S, "master");
+    assertEquals(e.balance(S), false, "dwindle only");
+});
+
+Deno.test("equalize: the parent split and everything in it back to the default ratio", () => {
+    const e = eng({ splitRatio: 1.2 });
+    open(e, ["a", "b", "c", "d"]);
+    e.layout(S);
+    e.moveDivider("a", 200, 0);              // root
+    e.moveDivider("b", 0, 100);              // b / (c | d)
+    e.moveDivider("d", -100, 0);             // c | d
+    e.layout(S);
+    assertEquals(e.equalize("b"), true);
+    const d = e.dump(S);
+    assert(Math.abs(d.ratio - 0.6) > 0.05, "the root is left alone: " + d.ratio);
+    assertEquals([d.b.ratio, d.b.b.ratio], [0.6, 0.6]);
+    assertEquals(e.equalize("b"), false, "nothing left to change");
+    assertEquals(e.equalize("nobody"), false);
+});
+
