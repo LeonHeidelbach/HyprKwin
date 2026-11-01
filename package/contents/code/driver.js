@@ -96,6 +96,7 @@ function createDriver(env) {
     // A window focused by walking the focus history: its activation is not
     // recorded, so the walk can go on from where it got to.
     var quietFocus = null;          // {id, at}
+    var groupAuto = {};             // window id -> {once, at}: new windows join its group
 
     // ---- helpers -----------------------------------------------------------
 
@@ -985,11 +986,14 @@ function createDriver(env) {
             guarded(function () { w.onAllDesktops = true; if (st.special !== special.name) w.minimized = true; });
         }
         if (rule.pin) pin(st, true);
-        if (shouldTile(st)) tile(st, initial ? { target: null } : {});
+        // A window joining a group is put beside it first, not into a
+        // preselection or the automatic split.
+        var joining = !initial && shouldTile(st) ? groupToJoin(st, rule) : null;
+        if (shouldTile(st)) tile(st, initial ? { target: null } : joining ? { target: joining } : {});
         if (rule.pseudo) engine.setPseudo(id, st.natural);
-        if (rule.group) {
-            var act = stOf(ws.activeWindow);
-            if (act && act !== st && engine.isGrouped(act.id) && isTiled(st)) engine.joinGroup(id, act.id);
+        if (joining && isTiled(st) && tracked[joining] && isTiled(tracked[joining])) {
+            if (!engine.isGrouped(joining)) engine.toggleGroup(joining);
+            engine.joinGroup(id, joining);
         }
         if (rule.fullscreen) w.fullScreen = true;
         if (rule.maximize) w.setMaximize(true, true);
@@ -1012,6 +1016,31 @@ function createDriver(env) {
             }
         }
         return st;
+    }
+
+    // The group a new window joins: one that asked for new windows on this
+    // workspace (groupAddNext / groupAddNew, the newest asking first), or the
+    // focused window's, for a "group" rule.
+    function groupToJoin(st, rule) {
+        var space = spaceOfWindow(st), best = null;
+        for (var target in groupAuto) {
+            var t = tracked[target];
+            if (!t || !isTiled(t)) {
+                delete groupAuto[target];
+                continue;
+            }
+            if (space && engine.spaceOf(target) === space && (!best || groupAuto[target].at > groupAuto[best].at)) best = target;
+        }
+        if (best) {
+            if (groupAuto[best].once) delete groupAuto[best];
+            log("new window", st.w.caption, "joins the group of", tracked[best].w.caption);
+            return best;
+        }
+        if (rule.group) {
+            var act = stOf(ws.activeWindow);
+            if (act && act !== st && isTiled(act) && engine.isGrouped(act.id)) return act.id;
+        }
+        return null;
     }
 
     // Hyprland's size / move / center / monitor / opacity / noborder rules.
@@ -1104,6 +1133,7 @@ function createDriver(env) {
         if (drag && drag.st === st) drag = null;
         var heir = wasFocused(id) ? successor(st) : null;
         engine.remove(id);
+        delete groupAuto[id];
         forgetConnections(st);
         delete tracked[id];
         if (heir) {
@@ -3588,6 +3618,19 @@ function createDriver(env) {
         togglePrivate: function () { toggleFlag("private", "Private: new windows go elsewhere", "Not private"); },
         focusOlder: function () { walkHistory(1); warp(); },
         focusNewer: function () { walkHistory(-1); warp(); },
+        groupAddAll: function () { groupAction(function (st) { engine.groupAll(st.id); }); },
+        groupAddNext: function () { addToGroup(true); },
+        groupAddNew: function () { addToGroup(false); },
+        groupStopAddNew: function () {
+            var space = currentSpace(), any = false;
+            for (var target in groupAuto) {
+                if (!tracked[target] || engine.spaceOf(target) === space) {
+                    delete groupAuto[target];
+                    any = true;
+                }
+            }
+            if (any) announce("New windows tile as usual");
+        },
     };
     for (var r = 1; r <= 9; r++) {
         (function (n) {
@@ -3667,6 +3710,16 @@ function createDriver(env) {
         if (!next || !tracked[next] || next === (st && st.id)) return;
         quietFocus = { id: next, at: Date.now() };
         activate(tracked[next].w);
+    }
+
+    // bsptab's add-next / add-new: new windows on this workspace join the
+    // focused window's group (made one when the first arrives), once or
+    // until groupStopAddNew.
+    function addToGroup(once) {
+        var st = active();
+        if (!st || !isTiled(st)) return;
+        groupAuto[st.id] = { once: once, at: Date.now() };
+        announce(once ? "The next window joins this group" : "New windows join this group");
     }
 
     function intoGroup(dir) {
@@ -4016,6 +4069,7 @@ function createDriver(env) {
                 iconTiles: lastIconTiles,
                 stagePreviews: lastStagePreviews,
                 presels: lastPresels,
+                groupAuto: JSON.parse(JSON.stringify(groupAuto)),
                 dim: lastDim,
                 zoomEscape: zoomKeysOn,
             };

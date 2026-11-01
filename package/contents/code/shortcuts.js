@@ -103,6 +103,10 @@ function shortcutList() {
         ["groupPrevious", "Previous window in group", "Meta+Alt+Shift+Tab"],
         ["groupPreviousAlt", "Previous window in group (alt)", "Meta+Ctrl+Left"],
         ["groupNextAlt", "Next window in group (alt)", "Meta+Ctrl+Right"],
+        ["groupAddAll", "Group every window on the workspace with this one", ""],
+        ["groupAddNext", "The next new window joins this group", ""],
+        ["groupAddNew", "New windows join this group, until stopped", ""],
+        ["groupStopAddNew", "New windows stop joining the group", ""],
 
         // After bspwm. Unbound by default: bspwm users bring their own keys.
         ["Preselection and the tree"],

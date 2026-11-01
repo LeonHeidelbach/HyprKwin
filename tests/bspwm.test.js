@@ -462,3 +462,17 @@ Deno.test("quiet focus brings a group's window to the front", () => {
     assertEquals(e.groupOf("a").active, 0);
 });
 
+// ---- groups -------------------------------------------------------------------
+
+Deno.test("groupAll: every window shown in the space joins the focused window's group", () => {
+    const e = eng();
+    open(e, ["a", "b", "c", "d"]);
+    open(e, ["x"], T);
+    e.setVisibility((id) => id !== "d");
+    e.focused("b");
+    assertEquals(e.groupAll("b"), true);
+    assertEquals(e.dump(S), { dir: "v", ratio: 0.5, a: { group: ["b", "a", "c"], active: 0 }, b: "d" });
+    assertEquals(e.spaceOf("x"), T, "other workspaces are left alone");
+    assertEquals(e.groupAll("b"), false, "nobody left to join");
+});
+

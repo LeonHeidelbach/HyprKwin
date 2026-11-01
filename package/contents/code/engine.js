@@ -1457,6 +1457,30 @@ function createEngine(userConfig) {
             return true;
         },
 
+        // Every other window shown in the space joins the window's group
+        // (made one if it is not), which keeps the focused window to the
+        // front. False if there was nobody to join.
+        groupAll: function (id) {
+            var leaf = leafOf[id];
+            if (!leaf) return false;
+            var space = spaceOf[id];
+            var others = [];
+            leaves(roots[space]).forEach(function (l) {
+                if (l === leaf) return;
+                l.wins.forEach(function (w) { if (isVisible(w)) others.push(w); });
+            });
+            var current = leaf.wins[leaf.active];
+            leaf.grouped = true;
+            others.forEach(function (w) {
+                detach(w);
+                leaf.wins.push(w);
+                leafOf[w] = leaf;
+                spaceOf[w] = space;
+            });
+            leaf.active = Math.max(0, leaf.wins.indexOf(current));
+            return others.length > 0;
+        },
+
         // Take `id` out of its group into a tile of its own next to it.
         leaveGroup: function (id) {
             var leaf = leafOf[id];

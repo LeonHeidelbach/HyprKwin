@@ -286,6 +286,12 @@ the window, through layout changes, floating and moves.
 workspace in the order you used them, without the walk itself changing that
 order; focusing a window any other way starts it afresh from the newest.
 
+**Groups, after bsptab.** `groupAddAll` puts every window on the workspace
+into the focused window's group (making it one). `groupAddNext` makes the
+next window opened on the workspace join the focused window's group, once;
+`groupAddNew` does so for every new window until `groupStopAddNew`. The
+group is made when the first window joins.
+
 ### Scratchpads
 
 `Meta+S` shows and hides the scratchpad, and `Meta+Alt+S` puts the focused

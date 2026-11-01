@@ -23,6 +23,8 @@
   locked window open, and new windows split another tile than a private one.
 - **Walking the focus history** (bspwm's `node older/newer -f`) without the
   walk reordering it.
+- **Groups gather windows** (after bsptab): every window on the workspace
+  into this group, or the next new window, or every new one until stopped.
 
 ### Fixed
 

@@ -44,6 +44,7 @@ Alacritty, Dolphin, Gwenview and `hyprkwinctl`.*
   - rotate and flip it
   - locked and private windows
   - walk the focus history
+  - gather windows into a group, or have new ones join it
 - **Focus indicator** you choose: a coloured border in the gap (one colour,
   your colour scheme's accent, or a gradient, with rounded corners if you
   like), Plasma's own window decorations, or nothing.

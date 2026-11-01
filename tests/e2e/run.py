@@ -4260,6 +4260,31 @@ def focus_history_walks_without_reordering(sb):
     sb.invoke("focusOlder")
     eq(sb.state()["active"], sb.window("C")["id"], "the walk starts again from the newest")
 
+
+@test
+def new_windows_join_a_group(sb):
+    sb.spawn("A")
+    sb.spawn("B")
+    sb.invoke("groupAddNext")                # B's group, once
+    sb.spawn("C")
+    s = sb.state()
+    eq(sorted(len(b["tabs"]) for b in s["groupBars"]), [2], "C joined B")
+    sb.spawn("D")
+    s = sb.state()
+    eq(sorted(len(b["tabs"]) for b in s["groupBars"]), [2], "once only")
+    sb.invoke("groupAddNew")                 # D's group, until stopped
+    sb.spawn("E")
+    sb.spawn("F")
+    s = sb.state()
+    eq(sorted(len(b["tabs"]) for b in s["groupBars"]), [2, 3], "E and F joined D")
+    sb.invoke("groupStopAddNew")
+    sb.spawn("G")
+    eq(sorted(len(b["tabs"]) for b in sb.state()["groupBars"]), [2, 3], "G tiles as usual")
+    sb.invoke("groupAddAll")
+    s = sb.state()
+    eq([len(b["tabs"]) for b in s["groupBars"]], [7], "everything in G's group")
+    eq(s["active"], sb.window("G", s)["id"], "G still in front")
+
 def main():
     words = [w for w in sys.argv[1:] if not w.startswith("-")]
     selected = [t for t in TESTS if not words or any(w in t.__name__ for w in words)]
