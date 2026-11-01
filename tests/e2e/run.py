@@ -4202,6 +4202,21 @@ def balance_and_equalize(sb):
 
 
 @test
+def balance_grid(sb):
+    for t in "ABC":
+        sb.spawn(t)                          # A | (B / C)
+    sb.invoke("balance")
+    s = sb.state()
+    a, b = sb.geometry("A", s), sb.geometry("B", s)
+    eq(a[2] < b[2], True, "balance: A narrower than the column of B and C (equal areas): %r %r" % (a, b))
+    sb.invoke("balanceGrid")
+    s = sb.state()
+    a, b, c = sb.geometry("A", s), sb.geometry("B", s), sb.geometry("C", s)
+    eq(abs(a[2] - b[2]) <= 5, True, "two columns of the same width (but for the gaps): %r %r" % (a, b))
+    eq(abs(b[3] - c[3]) <= 5, True, "two rows of the same height in the right column: %r %r" % (b, c))
+
+
+@test
 def rotate_and_flip(sb):
     three(sb)                                # A | (B / C), C focused
     sb.invoke("rotateClockwise")             # B / C turns: C left of B

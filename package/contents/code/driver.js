@@ -3594,6 +3594,12 @@ function createDriver(env) {
             engine.balance(space);
             relayout();
         },
+        balanceGrid: function () {
+            var space = currentSpace();
+            if (!space || !dwindleOnly(space, "Balance")) return;
+            engine.balanceGrid(space);
+            relayout();
+        },
         equalize: function () { treeAction("Equalize", function (id) { return engine.equalize(id); }); },
         moveToPreselection: function () {
             var st = active();

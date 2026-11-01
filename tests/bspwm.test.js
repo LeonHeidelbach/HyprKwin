@@ -325,6 +325,72 @@ Deno.test("balance: a group counts once, a hidden window not at all", () => {
     assertEquals(e.balance(S), false, "dwindle only");
 });
 
+Deno.test("balanceGrid: a column of stacked windows next to one window splits in half", () => {
+    const e = eng();
+    open(e, ["a", "b", "c"]);                // a | (b / c)
+    e.balance(S);
+    assertEquals(e.dump(S).ratio, 0.333, "balance: by area");
+    assertEquals(e.balanceGrid(S), true);
+    assertEquals(e.dump(S), { dir: "h", ratio: 0.5, a: "a", b: { dir: "v", ratio: 0.5, a: "b", b: "c" } });
+    assertEquals(e.balanceGrid(S), false, "nothing left to change");
+});
+
+Deno.test("balanceGrid: columns line up, every row of a column the same height", () => {
+    const e = eng();
+    open(e, ["a", "b", "c", "d", "e"]);      // a | (b / (c | (d / e)))
+    e.balanceGrid(S);
+    // Three columns (a, c, d / e) of equal width; b spans the two right ones.
+    // Three rows (b, d, e) of equal height; a spans all, c the lower two.
+    assertEquals(e.dump(S), {
+        dir: "h", ratio: 0.333, a: "a",
+        b: { dir: "v", ratio: 0.333, a: "b", b: { dir: "h", ratio: 0.5, a: "c", b: { dir: "v", ratio: 0.5, a: "d", b: "e" } } },
+    });
+    const l = e.layout(S);
+    for (const [id, w, h] of [["a", 640, 1080], ["b", 1280, 360], ["c", 640, 720], ["d", 640, 360], ["e", 640, 360]]) {
+        assertEquals([l.windows[id].width, l.windows[id].height], [w, h], id);
+    }
+});
+
+Deno.test("balanceGrid: a two by two grid gets four equal cells", () => {
+    const e = eng();
+    open(e, ["a"]);
+    e.preselect("a", "down");
+    open(e, ["c"]);                          // a / c
+    e.focused("a");
+    e.preselect("a", "right");
+    open(e, ["b"]);                          // (a | b) / c
+    e.focused("c");
+    e.preselect("c", "right");
+    open(e, ["d"]);                          // (a | b) / (c | d)
+    // Drag a's right edge and c's top edge somewhere else first
+    let l0 = e.layout(S);
+    e.resizeByRects("a", l0.windows.a, Object.assign({}, l0.windows.a, { width: l0.windows.a.width + 300 }));
+    l0 = e.layout(S);
+    e.resizeByRects("c", l0.windows.c, Object.assign({}, l0.windows.c, { y: l0.windows.c.y - 200, height: l0.windows.c.height + 200 }));
+    l0 = e.layout(S);
+    assert(l0.windows.a.width !== 960 && l0.windows.c.height !== 540, "unbalanced first: " + JSON.stringify(l0.windows));
+    e.balanceGrid(S);
+    const l = e.layout(S);
+    for (const id of ["a", "b", "c", "d"]) {
+        assertEquals([l.windows[id].width, l.windows[id].height], [960, 540], id);
+    }
+});
+
+Deno.test("balanceGrid: a group counts once, a hidden window not at all, dwindle only", () => {
+    const e = eng();
+    open(e, ["a", "b", "c", "d"]);           // a | (b / (c | d))
+    e.toggleGroup("a");
+    e.joinGroup("b", "a");                   // [a, b] | (c | d)
+    e.balanceGrid(S);
+    assertEquals(e.dump(S).ratio, 0.333, "one column against two");
+    e.setVisibility((id) => id !== "d");
+    e.balanceGrid(S);
+    assertEquals(e.dump(S).ratio, 0.5, "d gives its column to c");
+    assertEquals(e.balanceGrid("nowhere"), false);
+    e.setLayout(S, "master");
+    assertEquals(e.balanceGrid(S), false, "dwindle only");
+});
+
 Deno.test("equalize: the parent split and everything in it back to the default ratio", () => {
     const e = eng({ splitRatio: 1.2 });
     open(e, ["a", "b", "c", "d"]);

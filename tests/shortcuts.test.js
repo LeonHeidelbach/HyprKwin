@@ -175,7 +175,7 @@ Deno.test("the actions after bspwm are all there, and unbound", () => {
     const names = ["preselectLeft", "preselectDown", "preselectUp", "preselectRight", "preselectCancel", "preselectCancelAll"];
     for (let i = 1; i <= 9; i++) names.push("preselectRatio" + i);
     names.push("moveToPreselection", "toggleMarked", "moveMarkedToPreselection");
-    names.push("balance", "equalize");
+    names.push("balance", "balanceGrid", "equalize");
     names.push("rotateClockwise", "rotateCounterClockwise", "flipHorizontal", "flipVertical");
     names.push("toggleLocked", "togglePrivate");
     names.push("focusOlder", "focusNewer");

@@ -129,6 +129,7 @@ function shortcutList() {
         ["toggleMarked", "Mark / unmark window", ""],
         ["moveMarkedToPreselection", "Move the newest marked window into the newest preselection", ""],
         ["balance", "Balance the workspace: every window the same area", ""],
+        ["balanceGrid", "Balance the workspace as a grid: every column the same width, every row the same height", ""],
         ["equalize", "Reset the splits around the window to the default ratio", ""],
         ["rotateClockwise", "Rotate the split around the window clockwise", ""],
         ["rotateCounterClockwise", "Rotate the split around the window anticlockwise", ""],

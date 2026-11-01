@@ -1424,6 +1424,38 @@ function createEngine(userConfig) {
             return changed;
         },
 
+        // Every column the same width and every row the same height: a split
+        // shares its space by the columns (side by side) or rows (stacked)
+        // its two sides span, not by the tiles in them, so the cells of a
+        // tree that forms a grid line up. a | (b / c) gives a half the width.
+        // A group counts as one tile, a hidden side keeps its split.
+        balanceGrid: function (space) {
+            if (!roots[space] || modeOf(space) !== "dwindle") return false;
+            var changed = false;
+            // Columns ("h") or rows ("v") a subtree spans along dir: side by
+            // side parts add up along their own direction, the other way the
+            // widest part counts
+            var span = function (n, dir) {
+                if (!n || !shown(n)) return 0;
+                if (n.leaf) return 1;
+                var a = span(n.a, dir), b = span(n.b, dir);
+                return n.dir === dir ? a + b : Math.max(a, b);
+            };
+            var walk = function (n) {
+                if (!n || n.leaf || !shown(n)) return;
+                var a = span(n.a, n.dir), b = span(n.b, n.dir);
+                if (a > 0 && b > 0) {
+                    var r = a / (a + b);
+                    if (Math.abs(n.ratio - r) > 1e-9) changed = true;
+                    n.ratio = r;
+                }
+                walk(n.a);
+                walk(n.b);
+            };
+            walk(roots[space]);
+            return changed;
+        },
+
         // Every split in the window's parent split, and below it, back to the
         // default ratio (bspwm node @parent --equalize).
         equalize: function (id) {

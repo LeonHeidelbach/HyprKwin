@@ -262,7 +262,11 @@ newest.!automatic.local`. A floating window stays where it is, as in bspwm.
 **Balance and equalize.** `balance` gives every window on the workspace the
 same area (bspwm's `node @/ -B`): each split gives its first side as many
 parts as it has tiles. A group counts as one tile, and a minimised window as
-none. `equalize` puts the splits around the focused window, its parent split
+none. `balanceGrid` balances by rows and columns instead: every column gets
+the same width and every row in a column the same height, so the cells of a
+layout that forms a grid line up. Each split shares its space by the columns
+(side by side) or rows (stacked) its two sides span: with `a | (b / c)`,
+`balance` gives `a` a third of the width, `balanceGrid` half. `equalize` puts the splits around the focused window, its parent split
 and everything in it, back to the default ratio (`node @parent
 --equalize`).
 

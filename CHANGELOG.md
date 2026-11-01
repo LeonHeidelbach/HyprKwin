@@ -13,7 +13,8 @@
   [Preselection and the tree](docs/settings.md#preselection-and-the-tree-after-bspwm).
 - **Balance and equalize** (bspwm's `-B` and `--equalize`): every window on
   the workspace the same area, or the splits around the window back to the
-  default ratio.
+  default ratio. `balanceGrid` balances by rows and columns instead: every
+  column the same width, every row the same height.
 - **Moving into preselections, and marks** (bspwm's `node -n` and `marked`):
   the focused window, or the newest marked one, moves into the newest
   preselection on the workspace. Marked windows have a border of their own
