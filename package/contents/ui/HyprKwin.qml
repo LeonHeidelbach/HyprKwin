@@ -675,19 +675,53 @@ Item {
         }
     }
 
+    // Borders no longer needed wait out of sight, still mapped, to be used
+    // again: KWin maps a script's window as a new window, which Plasma's open
+    // animation (Scale, Glide) takes hold of, so a border appearing would
+    // grow in. One is kept ready, too, so a new window's border is one of
+    // these rather than a new set of windows.
+    property var spareBorders: []
+    readonly property int maxSpareBorders: 8
+    readonly property var parkedFrame: ({ id: "spare", x: -20000, y: -20000, width: 64, height: 64, active: false, cuts: [] })
+
+    function newBorder() {
+        return borderComponent.createObject(root, {
+            overlaysHidden: Qt.binding(() => root.effectActive || root.shuttingDown),
+        });
+    }
+
+    function parkBorder(border, cfg) {
+        border.frame = parkedFrame;
+        border.active = false;
+        border.borderWidth = Math.max(1, cfg.borderSize || 0);
+        border.radius = cfg.borderRadius || 0;
+        border.revision = revision;
+    }
+
     function syncBorders(list, cfg) {
         style = cfg;
         revision++;
         bordersShown = list.length;
         overlaysOnScreen = bordersShown + barsShown + preselsShown;
         const seen = {};
+        for (const entry of list) seen[entry.id] = true;
+        // Let go of the ones not needed first, so they can be used again now.
+        for (const key in borderObjects) {
+            if (seen[key]) continue;
+            const old = borderObjects[key];
+            delete borderObjects[key];
+            if (spareBorders.length < maxSpareBorders && !shuttingDown) {
+                parkBorder(old, cfg);
+                spareBorders.push(old);
+            } else {
+                old.hideAll();
+                old.destroy();
+            }
+        }
         for (const entry of list) {
-            seen[entry.id] = true;
             let border = borderObjects[entry.id];
             if (!border) {
-                border = borderComponent.createObject(root, {
-                    overlaysHidden: Qt.binding(() => root.effectActive || root.shuttingDown),
-                });
+                border = spareBorders.pop() || newBorder();
                 borderObjects[entry.id] = border;
             }
             border.frame = entry;
@@ -706,7 +740,11 @@ Item {
             border.markedColor = cfg.markedBorderColor || "#e0af68";
             border.revision = revision;
         }
-        dropMissing(borderObjects, seen);
+        if (!spareBorders.length && list.length && (cfg.borderSize || 0) > 0 && !shuttingDown) {
+            const spare = newBorder();
+            parkBorder(spare, cfg);
+            spareBorders.push(spare);
+        }
     }
 
 
@@ -941,6 +979,7 @@ Item {
         keysGuide.hide();
         dimMarker.hideAll();
         for (const key in borderObjects) borderObjects[key].hideAll();
+        for (const spare of spareBorders) spare.hideAll();
         for (const key in groupBarObjects) groupBarObjects[key].hide();
         for (const key in preselObjects) preselObjects[key].hideAll();
         for (const key in iconTileObjects) iconTileObjects[key].hide();

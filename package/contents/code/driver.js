@@ -887,6 +887,9 @@ function createDriver(env) {
         if (!w.skipTaskbar) w.skipTaskbar = true;
         if (!w.skipPager) w.skipPager = true;
         if (!w.skipSwitcher) w.skipSwitcher = true;
+        // Plasma's close animations (Scale, Glide) would shrink or fade a
+        // border as it goes, a moment after the window it belonged to.
+        if (w.skipsCloseAnimation === false) w.skipsCloseAnimation = true;
         // KWin decorates script windows despite FramelessWindowHint, which
         // forces a thin strip up to the decoration's minimum size.
         if (!w.noBorder) w.noBorder = true;
@@ -2017,10 +2020,14 @@ function createDriver(env) {
                 // A window held back mid-slide is drawn where it is going;
                 // the effect slides its border there with the divider.
                 var r = st.hold || w.frameGeometry, b = cfg.borderSize;
-                // The focused window's border reuses one overlay set, so a
-                // focus change is a move rather than new windows; unfocused
-                // borders need one set each or they would overwrite it.
-                var outer = { id: isActive ? "focus-border" : st.id, x: r.x - b, y: r.y - b,
+                // A focus change must only change colours: overlays shown or
+                // hidden then are what Plasma's open and close animations
+                // (Scale, Glide, …) take hold of. With unfocused borders on,
+                // every window keeps its own overlay set whether it has the
+                // focus or not; without, the focused window's border is one
+                // set that moves from window to window.
+                var ownSet = cfg.showInactiveBorders || isActive === false;
+                var outer = { id: ownSet ? st.id : "focus-border", x: r.x - b, y: r.y - b,
                               width: r.width + 2 * b, height: r.height + 2 * b, active: isActive };
                 outer.marked = marked;
                 if (!usableRect(outer) || r.width < MIN_DECORATED_SIZE || r.height < MIN_DECORATED_SIZE) {
@@ -4213,6 +4220,11 @@ function createDriver(env) {
                 // HyprKwin's own windows that KWin has: borders, tab bars,
                 // icon tiles, messages. The soak test watches for a leak.
                 overlayWindows: (ws.windows || []).filter(isOverlay).length,
+                // Of those, the ones waiting out of sight to be used again
+                // (spare borders): a pool, which only grows so far.
+                parkedOverlayWindows: (ws.windows || []).filter(function (w) {
+                    return isOverlay(w) && w.frameGeometry.x < -10000 && w.frameGeometry.y < -10000;
+                }).length,
                 iconTiles: lastIconTiles,
                 stagePreviews: lastStagePreviews,
                 presels: lastPresels,

@@ -563,7 +563,8 @@ Item { Timer { interval: 100; running: true; onTriggered: {
         return self._input
 
     def overlays(self):
-        """Geometry of every HyprKwin overlay window KWin currently has.
+        """Geometry of every HyprKwin overlay window KWin currently has on
+        screen (not the borders waiting out of sight to be used again).
 
         KWin's QML loader caches per directory, so each probe needs a fresh one.
         """
@@ -574,7 +575,9 @@ import org.kde.kwin
 Item { Timer { interval: 100; running: true; onTriggered: {
   let n = 0;
   for (const w of Workspace.windows) if (w.pid <= 0 && !w.resourceClass && String(w.caption) === "HyprKwin overlay") {
-    n++; const g = w.frameGeometry;
+    const g = w.frameGeometry;
+    if (g.x < -10000 && g.y < -10000) continue;      // waiting out of sight to be used again
+    n++;
     console.warn("HKOVERLAY " + Math.round(g.x) + "," + Math.round(g.y) + " " + Math.round(g.width) + "x" + Math.round(g.height));
   }
   console.warn("HKOVERLAYCOUNT " + n);

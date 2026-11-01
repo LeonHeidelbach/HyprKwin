@@ -4050,6 +4050,72 @@ def stage_previews_give_way_to_menus(sb):
     eq(len(sb.state()["stagePreviews"][0]["shown"]), 2, "and is back once it closes")
 
 
+# ---- borders change colour, nothing else -----------------------------------
+
+
+def watch_overlay_windows(sb):
+    """Start logging every HyprKwin overlay window KWin maps or unmaps; returns
+    a function giving the log since, as (event, skipsCloseAnimation) pairs."""
+    d = sb.base / ("ovlog-%d" % time.time_ns())
+    d.mkdir(parents=True)
+    (d / "main.qml").write_text("""import QtQuick
+import org.kde.kwin
+Item {
+  Connections { target: Workspace
+    function onWindowAdded(w) { if (String(w.caption) === "HyprKwin overlay") console.warn("HKOVLOG add"); }
+    function onWindowRemoved(w) { if (String(w.caption) === "HyprKwin overlay") console.warn("HKOVLOG remove " + w.skipsCloseAnimation); }
+  }
+}
+""")
+    name = "hk-ovlog-%d" % time.time_ns()
+    sb._qdbus("org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadDeclarativeScript", str(d / "main.qml"), name)
+    sb._qdbus("org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.start")
+    time.sleep(0.3)
+    mark = sb.log_path.read_text(errors="replace").count("HKOVLOG")
+
+    def since():
+        lines = [l.split("HKOVLOG ", 1)[1].split() for l in sb.log_path.read_text(errors="replace").splitlines()
+                 if "HKOVLOG " in l]
+        return [tuple(l) for l in lines[mark:]]
+    return since
+
+
+BORDERS_BOTH = {"ShowInactiveBorders": "true", "InactiveBorderSource": "1", "InactiveBorderColor": "#30302f",
+                "BorderSize": "4", "ActiveBorderSource": "1", "ActiveBorderColor": "#9DD274"}
+
+
+@test(config=BORDERS_BOTH, kwinrc={"Plugins": {"scaleEnabled": "true"}})
+def a_focus_change_only_recolours_the_borders(sb):
+    """Plasma's open and close animations (Scale here) take hold of any
+    overlay window shown or hidden; with unfocused borders on, a focus change
+    used to swap two windows' border sets, which then shrank and grew."""
+    three(sb)
+    sb.settle(1.0)
+    log = watch_overlay_windows(sb)
+    for k in ("focusLeft", "focusRight", "focusUp", "focusDown"):
+        sb.invoke(k)
+    sb.settle(0.5)
+    eq(log(), [], "no border window shown or hidden")
+    sb.clients[2].kill()                     # C: its border goes, at once
+    sb.wait_for(lambda s: len(s["windows"]) == 2, "C gone")
+    sb.settle(0.5)
+    eq([e for e in log() if e[0] == "remove" and e[1] != "true"], [], "nothing left to a close animation")
+
+
+@test(config={"BorderSize": "4"}, kwinrc={"Plugins": {"scaleEnabled": "true"}})
+def a_focus_change_moves_the_one_border(sb):
+    three(sb)
+    sb.settle(1.0)
+    log = watch_overlay_windows(sb)
+    for k in ("focusLeft", "focusRight", "focusUp"):
+        sb.invoke(k)
+    sb.settle(0.5)
+    eq(log(), [], "the focus border moves; nothing is shown or hidden")
+    sb.spawn("D")
+    sb.settle(0.5)
+    eq([e for e in log() if e[0] == "add"], [], "even for a new window: the border waiting out of sight is used")
+
+
 # ---- new windows appear in their tile --------------------------------------
 
 

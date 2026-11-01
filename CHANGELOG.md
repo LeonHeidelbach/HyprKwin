@@ -41,6 +41,12 @@
 
 ### Fixed
 
+- **Borders only change colour when the focus moves.** With unfocused
+  borders on, a focus change used to take one window's border away and give
+  another window a new one, and Plasma's open and close animations (Scale,
+  Glide) shrank and grew them as it did. Each window now keeps its border,
+  which only changes colour; a border no longer needed waits out of sight
+  to be used again, and one going away is not animated.
 - **Windows beside an edge dragged with the mouse stay in their tiles.** A
   Meta+right-drag (or an edge drag) asks the windows beside it for a new size
   at every step, and an app slow to answer could still be answering an

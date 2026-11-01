@@ -89,7 +89,10 @@ def main():
         out.writerow(["minute", "kwin_rss_kb", "overlay_windows", "tracked", "clients",
                       "relayout_max_ms", "decorations_max_ms", "actions", "errors"])
         sb.settle(1)
-        baseline = sb.state().get("overlayWindows", 0)
+        # Spare borders waiting out of sight are a pool of their own, which
+        # only grows so far: they are not counted against a leak.
+        own = lambda s: s.get("overlayWindows", 0) - s.get("parkedOverlayWindows", 0)
+        baseline = own(sb.state())
         print("HyprKwin's own windows at the start: %d" % baseline, flush=True)
         clients = []                        # (title, process)
         recent, last_action, states, log_all = [], "?", [], []
@@ -179,9 +182,9 @@ def main():
         sb.settle(3)
         s = sb.state()
         print("closed everything: own windows %d (at the start %d), tracked %d"
-              % (s.get("overlayWindows", 0), baseline, len(s["windows"])), flush=True)
-        if s.get("overlayWindows", 0) > baseline + 2:
-            failures.append("HyprKwin's own windows grew from %d to %d" % (baseline, s.get("overlayWindows", 0)))
+              % (own(s), baseline, len(s["windows"])), flush=True)
+        if own(s) > baseline + 2:
+            failures.append("HyprKwin's own windows grew from %d to %d" % (baseline, own(s)))
         if s["windows"]:
             failures.append("still tracking closed windows: %r" % sorted(w["caption"] for w in s["windows"].values()))
 
