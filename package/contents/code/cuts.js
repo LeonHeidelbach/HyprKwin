@@ -9,6 +9,7 @@
 function subtractRects(r, cuts) {
     var parts = [{ x: r.x, y: r.y, width: r.width, height: r.height }];
     (cuts || []).forEach(function (c) {
+        if (!usable(c)) return;
         var next = [];
         parts.forEach(function (p) {
             var x1 = Math.max(p.x, c.x), y1 = Math.max(p.y, c.y);
@@ -25,6 +26,17 @@ function subtractRects(r, cuts) {
         parts = next;
     });
     return parts;
+}
+
+function usable(c) {
+    return !!c && isFinite(c.x) && isFinite(c.y) && isFinite(c.width) && isFinite(c.height) && c.width > 0 && c.height > 0;
+}
+
+// Whether any of `cuts` reaches over `r` at all.
+function crosses(r, cuts) {
+    return (cuts || []).some(function (c) {
+        return usable(c) && c.x < r.x + r.width && r.x < c.x + c.width && c.y < r.y + r.height && r.y < c.y + c.height;
+    });
 }
 
 // The same, relative to `r`'s own corner: what an overlay window at `r`

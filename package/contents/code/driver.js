@@ -1661,6 +1661,7 @@ function createDriver(env) {
         if (!shown) st.placedHidden = true;
         noteSent(st, r);
         if (!sameRect(w.frameGeometry, r)) {
+            st.writes = (st.writes || 0) + 1;       // for the state dump
             if (holdShrinks && slideGrowers) slideGrowers[st.id] = true;
             w.frameGeometry = env.rect(r.x, r.y, r.width, r.height);
         }
@@ -1865,8 +1866,10 @@ function createDriver(env) {
         if (!stopped) env.scheduleLayout();
     }
 
-    function scheduleDecorations() {
-        if (!stopped) env.scheduleDecorations();
+    // `urgent`: something the user is looking at (the focus moving), not
+    // held back by the limit on how often the overlays follow the windows.
+    function scheduleDecorations(urgent) {
+        if (!stopped) env.scheduleDecorations(urgent === true);
     }
 
     // Chromium, Electron and GTK apps draw their own decorations on Wayland,
@@ -1885,19 +1888,29 @@ function createDriver(env) {
     // Menus, combo boxes and tooltips are ordinary windows to KWin, and our
     // overlays are drawn above them, so a menu spilling past a window's edge
     // would have the border painted over it.
+    // Plasma's own popups too: the app launcher, the calendar, the system
+    // tray, a panel's tooltips.
+    function isPopup(w) {
+        return !!w && !!(w.popupWindow || w.popupMenu || w.dropdownMenu || w.menu || w.comboBox || w.tooltip || w.appletPopup) &&
+            String(w.caption) !== OVERLAY_TITLE;
+    }
+
     function popupRects() {
         var out = [];
         var all = ws.windows || [];
         for (var i = 0; i < all.length; i++) {
             var w = all[i];
-            if (!w || w.minimized || w.deleted) continue;
-            // Plasma's own popups too: the app launcher, the calendar, the
-            // system tray.
-            if (!(w.popupWindow || w.popupMenu || w.dropdownMenu || w.menu || w.comboBox || w.tooltip || w.appletPopup)) continue;
-            if (String(w.caption) === OVERLAY_TITLE) continue;
+            if (!w || w.minimized || w.deleted || !isPopup(w)) continue;
             out.push(copyRect(w.frameGeometry));
         }
         return out;
+    }
+
+    // A popup that moves or changes size (Plasma moves one tooltip from
+    // panel entry to panel entry, and it grows as a preview loads) moves the
+    // holes the borders leave for it.
+    function watchPopup(w) {
+        if (isPopup(w)) listen(w.frameGeometryChanged, scheduleDecorations, w);
     }
 
     function overlaps(a, b) {
@@ -1932,6 +1945,7 @@ function createDriver(env) {
     function rectsAbove(w, r) {
         var order = ws.stackingOrder || [];
         var i = w ? order.indexOf(w) : -1;
+        if (w && i < 0) return [];
         var out = [];
         for (var j = i + 1; j < order.length; j++) {
             var o = order[j];
@@ -2038,16 +2052,14 @@ function createDriver(env) {
                 borders.push(outer);
             });
         }
-        var bars = groupBars.filter(function (bar) {
-            // A menu must never have a tab bar painted over it.
-            for (var p = 0; p < popups.length; p++) {
-                if (overlaps(popups[p], bar)) return false;
-            }
-            return !Object.keys(fullscreenScreens).some(function (name) {
-                var s = screenByName(name);
-                return s && contains(s.geometry, { x: bar.x + 1, y: bar.y + 1 });
-            });
-        }).map(function (bar) {
+        var bars = groupBars.map(function (bar) {
+            // A menu must never have a tab bar painted over it, nor must a
+            // full-screen window: the bar waits out of sight meanwhile.
+            bar.covered = popups.some(function (p) { return overlaps(p, bar); }) ||
+                Object.keys(fullscreenScreens).some(function (name) {
+                    var s = screenByName(name);
+                    return s && contains(s.geometry, { x: bar.x + 1, y: bar.y + 1 });
+                });
             bar.tabs.forEach(function (t) {
                 var st = tracked[t.id];
                 if (st) t.caption = String(st.w.caption);
@@ -3956,6 +3968,7 @@ function createDriver(env) {
         initial.forEach(function (w) {
             hideOverlay(w);
             watchPanel(w);
+            watchPopup(w);
             var st = track(w, true);
             if (st && isTiled(st)) engine.focused(st.id);
         });
@@ -3983,6 +3996,7 @@ function createDriver(env) {
 
         listen(ws.windowAdded, function (w) {
             hideOverlay(w);
+            watchPopup(w);
             if (w.dock) {
                 watchPanel(w);
                 panelChanged();
@@ -3994,6 +4008,7 @@ function createDriver(env) {
             else if (!isOverlay(w)) scheduleDecorations();  // a menu may cover a border
         });
         listen(ws.windowRemoved, function (w) {
+            if (isPopup(w)) forgetConnections(w);
             if (w.dock) {
                 forgetConnections(w);
                 panelChanged();
@@ -4049,7 +4064,7 @@ function createDriver(env) {
                 }
                 if (before && before.wins[before.active] !== st.id) relayout();
             }
-            scheduleDecorations();
+            scheduleDecorations(true);      // the borders change colour now
         });
         listen(ws.currentDesktopChanged, function (prev) {
             if (prev) previousDesktop = prev.id;
@@ -4217,6 +4232,7 @@ function createDriver(env) {
                     output: st.w.output ? st.w.output.name : null, workspace: st.desktop,
                     presel: engine.preselection(id),
                     unseen: !!st.revealing,
+                    placements: st.writes || 0,
                 };
                 out.windows[id].flags = engine.flagsOf(id);
             }

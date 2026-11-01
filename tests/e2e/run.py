@@ -2085,15 +2085,23 @@ def a_drag_only_resizes_the_windows_beside_its_edge(sb):
     sb.settle(1.0)
     for t in "ABCD":
         logs[t].write_text("")
+    s = sb.state()
+    before = {t: sb.window(t, s)["placements"] for t in "ABCD"}
     x, y, w, h = sb.geometry("D")
     fi = sb.input()
     fi.drag((x + 20, y + h // 2), (x - 130, y + h // 2), btn=BTN_RIGHT, modifiers=("meta",), steps=15)
     sb.settle(1.0)
     sizes = {t: [l.split()[2] for l in logs[t].read_text().splitlines() if l.split()[1] == "size"] for t in "ABCD"}
     eq((sizes["A"], sizes["B"]), ([], []), "A and B are not beside the edge: nothing asked of them")
-    for t in "CD":
-        eq(0 < len(sizes[t]) <= 16, True, "%s asked once a step: %r" % (t, sizes[t]))
-        eq(all(a != b for a, b in zip(sizes[t], sizes[t][1:])), True, "%s never asked for the size it has: %r" % (t, sizes[t]))
+    eq(0 < len(sizes["C"]) <= 16, True, "C asked once a step at most: %r" % (sizes["C"],))
+    # What HyprKwin itself sent (Qt only reports a size that changed).
+    s = sb.state()
+    sent = {t: sb.window(t, s)["placements"] for t in "ABCD"}
+    eq((sent["A"] - before["A"], sent["B"] - before["B"]), (0, 0), "no geometry sent to A or B")
+    eq(0 < sent["C"] - before["C"] <= 16, True, "C sent its tile once a step at most: %r" % (sent["C"] - before["C"],))
+    sb.settle(1.0)
+    s = sb.state()
+    eq({t: sb.window(t, s)["placements"] for t in "ABCD"}, sent, "nothing sent after the drag is over")
 
 
 @test(config={"FocusFollowsMouse": "true"})
@@ -3024,6 +3032,11 @@ def the_border_leaves_out_a_window_above(sb):
         seen = red_in(sb, sb.base / "above.png",
                       [(edge, fy - 40), (edge, fy + fh // 2), (edge, fy + fh + 40), (bx + bw // 2, by - 3)])
         eq(seen, [True, False, True, True], "red above and below F and along the top, none across F")
+    # The hole is not painted, nor does it take the pointer: a click there is F's.
+    sb.input().click(bx - 3, fy + fh // 2)
+    sb.settle(0.5)
+    s = sb.state()
+    eq(s["active"], sb.window("F", s)["id"], "the click through the hole reached F")
     sb.clients[-1].kill()
     sb.wait_for(lambda s: all(w["caption"] != "F" for w in s["windows"].values()), "F closed")
     sb.settle(0.6)
@@ -4116,14 +4129,15 @@ def stage_previews_give_way_to_menus(sb):
 
 def watch_overlay_windows(sb):
     """Start logging every HyprKwin overlay window KWin maps or unmaps; returns
-    a function giving the log since, as (event, skipsCloseAnimation) pairs."""
+    a function giving the log since, as ("add", "parked"|"shown") and
+    ("remove", skipsCloseAnimation) pairs."""
     d = sb.base / ("ovlog-%d" % time.time_ns())
     d.mkdir(parents=True)
     (d / "main.qml").write_text("""import QtQuick
 import org.kde.kwin
 Item {
   Connections { target: Workspace
-    function onWindowAdded(w) { if (String(w.caption) === "HyprKwin overlay") console.warn("HKOVLOG add"); }
+    function onWindowAdded(w) { if (String(w.caption) === "HyprKwin overlay") console.warn("HKOVLOG add " + (w.x < -10000 && w.y < -10000 ? "parked" : "shown")); }
     function onWindowRemoved(w) { if (String(w.caption) === "HyprKwin overlay") console.warn("HKOVLOG remove " + w.skipsCloseAnimation); }
   }
 }
@@ -4139,6 +4153,33 @@ Item {
                  if "HKOVLOG " in l]
         return [tuple(l) for l in lines[mark:]]
     return since
+
+
+def overlay_close_animations(sb):
+    """Overlay windows KWin would play a close animation for (none should)."""
+    d = sb.base / ("skip-%d" % time.time_ns())
+    d.mkdir(parents=True)
+    (d / "main.qml").write_text("""import QtQuick
+import org.kde.kwin
+Item { Timer { interval: 100; running: true; onTriggered: {
+  for (const w of Workspace.windows) if (String(w.caption) === "HyprKwin overlay" && !w.skipsCloseAnimation) console.warn("HKSKIP " + w.x + "," + w.y);
+  console.warn("HKSKIPDONE");
+}}}
+""")
+    mark = sb.log_path.read_text(errors="replace").count("HKSKIPDONE")
+    name = "hk-skip-%d" % time.time_ns()
+    sb._qdbus("org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadDeclarativeScript", str(d / "main.qml"), name)
+    sb._qdbus("org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.start")
+    for _ in range(60):
+        text = sb.log_path.read_text(errors="replace")
+        if text.count("HKSKIPDONE") > mark:
+            sb._qdbus("org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.unloadScript", name)
+            lines = text.splitlines()
+            start = [i for i, l in enumerate(lines) if "HKSKIPDONE" in l][mark - 1] if mark else -1
+            done = [i for i, l in enumerate(lines) if "HKSKIPDONE" in l][mark]
+            return [l.split("HKSKIP ", 1)[1] for l in lines[start + 1:done] if "HKSKIP " in l]
+        time.sleep(0.05)
+    raise RuntimeError("probe did not report")
 
 
 BORDERS_BOTH = {"ShowInactiveBorders": "true", "InactiveBorderSource": "1", "InactiveBorderColor": "#30302f",
@@ -4157,10 +4198,10 @@ def a_focus_change_only_recolours_the_borders(sb):
         sb.invoke(k)
     sb.settle(0.5)
     eq(log(), [], "no border window shown or hidden")
-    sb.clients[2].kill()                     # C: its border goes, at once
-    sb.wait_for(lambda s: len(s["windows"]) == 2, "C gone")
+    sb.spawn("D")
     sb.settle(0.5)
-    eq([e for e in log() if e[0] == "remove" and e[1] != "true"], [], "nothing left to a close animation")
+    eq([e for e in log() if e != ("add", "parked")], [], "a new window's border is a spare; the new spare is made out of sight")
+    eq(overlay_close_animations(sb), [], "and every overlay goes without a close animation")
 
 
 @test(config={"BorderSize": "4"}, kwinrc={"Plugins": {"scaleEnabled": "true"}})

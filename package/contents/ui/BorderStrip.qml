@@ -1,6 +1,7 @@
-// One edge of a focus border. KWin does not honour WindowTransparentForInput
-// for script windows, so borders are four strips that only cover the gap
-// around a window and never its contents.
+// One edge of a focus border. Borders are four strips that only cover the gap
+// around a window and never its contents; a strip lets every click and hover
+// through (outputOnly), so the holes it leaves for what is in front of the
+// window (a menu, a tooltip) can be used too.
 import QtQuick
 import QtQuick.Shapes
 import QtQuick.Window
@@ -14,7 +15,11 @@ Window {
     // windows stacked above, panels): left out, as holes the strip does not
     // paint, so they show through. It stays mapped whatever is covered.
     property var cuts: []
-    readonly property var pieces: Cuts.visiblePieces(area, cuts)
+    readonly property bool holed: Cuts.crosses(area, cuts)
+    readonly property var pieces: holed ? Cuts.visiblePieces(area, cuts) : []
+    // KWin's own on-screen displays are made the same way: input goes
+    // straight through to whatever is underneath.
+    property bool outputOnly: true
     // Every strip draws the whole ring, positioned so that only its own piece
     // of it falls inside the window. That keeps corners exact and lets one
     // gradient run around the entire border.
@@ -46,8 +51,8 @@ Window {
     readonly property bool ready: usable(area.width) && usable(area.height) && isFinite(area.x) && isFinite(area.y)
 
     function place() {
-        const gx = isFinite(area.x) ? area.x : 0, gy = isFinite(area.y) ? area.y : 0;
-        const gw = usable(area.width) ? area.width : 1, gh = usable(area.height) ? area.height : 1;
+        const gx = isFinite(area.x) ? Math.round(area.x) : 0, gy = isFinite(area.y) ? Math.round(area.y) : 0;
+        const gw = usable(area.width) ? Math.round(area.width) : 1, gh = usable(area.height) ? Math.round(area.height) : 1;
         if (x !== gx || y !== gy || width !== gw || height !== gh) setGeometry(gx, gy, gw, gh);
     }
 
@@ -55,7 +60,10 @@ Window {
     // and this runs for every strip each time the borders are redrawn.
     function sync() {
         const want = shown && !overlaysHidden && ready;
-        if (want && !visible) show();
+        if (want && !visible) {
+            place();                    // never shown at a size it does not have yet
+            show();
+        }
         else if (!want && visible) hide();
     }
     onReadyChanged: sync()
@@ -78,31 +86,39 @@ Window {
     // drag does at every step.
     readonly property bool plain: radius <= 0 && Qt.colorEqual(stripColor, stripColor2)
 
-    Repeater {
-        model: strip.plain ? strip.pieces : []
-        Rectangle {
-            required property var modelData
-            x: modelData.x
-            y: modelData.y
-            width: modelData.width
-            height: modelData.height
-            color: strip.stripColor
-        }
+    // Nothing in front of it, the usual case: one rectangle, or one ring.
+    Rectangle {
+        anchors.fill: parent
+        visible: strip.plain && !strip.holed
+        color: strip.stripColor
+    }
+    Loader {
+        active: !strip.plain && !strip.holed
+        sourceComponent: ringComponent
     }
 
-    // Rounded or a gradient: the ring, drawn in each uncovered piece.
+    // Something in front: only the uncovered pieces are painted. The pieces
+    // are counted, not handed over as a list, so they stay as they are
+    // while only their sizes change.
     Repeater {
-        model: strip.plain ? [] : strip.pieces
+        model: strip.holed ? strip.pieces.length : 0
         Item {
-            required property var modelData
-            x: modelData.x
-            y: modelData.y
-            width: modelData.width
-            height: modelData.height
+            required property int index
+            readonly property var piece: strip.pieces[index] || { x: 0, y: 0, width: 0, height: 0 }
+            x: piece.x
+            y: piece.y
+            width: piece.width
+            height: piece.height
             clip: true
+            Rectangle {
+                anchors.fill: parent
+                visible: strip.plain
+                color: strip.stripColor
+            }
             Loader {
                 x: -parent.x
                 y: -parent.y
+                active: !strip.plain
                 sourceComponent: ringComponent
             }
         }

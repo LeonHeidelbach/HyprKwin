@@ -71,13 +71,22 @@ Item {
         property double last: 0
         readonly property int gap: 12
         onTriggered: {
-            last = Date.now();
             root.driver.updateDecorations();
+            last = Date.now();              // from the end of a pass: a slow one is not followed at once
         }
     }
-    function scheduleDecorations() {
+    // `urgent`: a change the user is looking at (the focus moving), drawn on
+    // the next turn of the event loop whatever ran just before.
+    function scheduleDecorations(urgent) {
+        if (urgent) {
+            decorationTimer.stop();
+            decorationTimer.interval = 0;
+            decorationTimer.start();
+            return;
+        }
         if (decorationTimer.running) return;
-        decorationTimer.interval = Math.max(0, decorationTimer.gap - (Date.now() - decorationTimer.last));
+        const since = Date.now() - decorationTimer.last;
+        decorationTimer.interval = since < 0 ? 0 : Math.max(0, Math.min(decorationTimer.gap, decorationTimer.gap - since));
         decorationTimer.start();
     }
 
@@ -695,8 +704,8 @@ Item {
     // grow in. One is kept ready, too, so a new window's border is one of
     // these rather than a new set of windows.
     property var spareBorders: []
-    readonly property int maxSpareBorders: 8
-    readonly property var parkedFrame: ({ id: "spare", x: -20000, y: -20000, width: 64, height: 64, active: false, cuts: [] })
+    readonly property int maxSpareBorders: 16
+    readonly property int readySpareBorders: 2
 
     function newBorder() {
         return borderComponent.createObject(root, {
@@ -705,8 +714,10 @@ Item {
     }
 
     function parkBorder(border, cfg) {
+        // Large enough that no strip of it is empty (and so unmapped).
+        const size = 2 * Math.max(cfg.borderSize || 0, cfg.borderRadius || 0) + 16;
         border.sig = "";
-        border.frame = parkedFrame;
+        border.frame = { id: "spare", x: -20000, y: -20000, width: size, height: size, active: false, cuts: [] };
         border.active = false;
         border.borderWidth = Math.max(1, cfg.borderSize || 0);
         border.radius = cfg.borderRadius || 0;
@@ -768,10 +779,21 @@ Item {
             border.markedColor = cfg.markedBorderColor || "#e0af68";
             border.revision = revision;
         }
-        if (!spareBorders.length && list.length && (cfg.borderSize || 0) > 0 && !shuttingDown) {
-            const spare = newBorder();
-            parkBorder(spare, cfg);
-            spareBorders.push(spare);
+        // Borders drawn at all (a coloured border, or one filling in for
+        // apps that decorate themselves): keep some ready; otherwise none.
+        const drawing = (cfg.borderSize || 0) > 0 && (cfg.focusIndicator === 1 || (cfg.focusIndicator === 0 && cfg.borderOnUndecorated));
+        if (!drawing) {
+            for (const spare of spareBorders) {
+                spare.hideAll();
+                spare.destroy();
+            }
+            spareBorders = [];
+        } else if (list.length && !shuttingDown) {
+            while (spareBorders.length < readySpareBorders) {
+                const spare = newBorder();
+                parkBorder(spare, cfg);
+                spareBorders.push(spare);
+            }
         }
     }
 
@@ -895,8 +917,14 @@ Item {
             presel.fillColor = cfg.preselFeedbackColor || "#27293b";
             presel.fillOpacity = cfg.preselFeedbackOpacity || 0.8;
             presel.radius = cfg.borderRadius || 0;
-            presel.area = { x: entry.x, y: entry.y, width: entry.width, height: entry.height };
-            presel.cuts = entry.cuts || [];
+            // Only when they change: each is a new window geometry, or a new
+            // set of holes.
+            const a = presel.area;
+            if (!a || a.x !== entry.x || a.y !== entry.y || a.width !== entry.width || a.height !== entry.height) {
+                presel.area = { x: entry.x, y: entry.y, width: entry.width, height: entry.height };
+            }
+            const cuts = entry.cuts || [];
+            if (JSON.stringify(cuts) !== JSON.stringify(presel.cuts)) presel.cuts = cuts;
             presel.revision = revision;
         }
         dropMissing(preselObjects, seen);
@@ -918,7 +946,10 @@ Item {
                 groupBar.tabClicked.connect(id => root.driver.selectTab(id));
                 groupBarObjects[bar.id] = groupBar;
             }
-            groupBar.bar = bar;
+            // Covered (a menu over it, a full-screen window): out of sight,
+            // still mapped, so it is not destroyed and made again (and
+            // animated in by Plasma's open effects) each time a tooltip comes.
+            groupBar.bar = bar.covered ? Object.assign({}, bar, { x: -20000, y: -20000 }) : bar;
             groupBar.revision = revision;
         }
         dropMissing(groupBarObjects, seen);
@@ -937,7 +968,7 @@ Item {
             rect: (x, y, w, h) => Qt.rect(x, y, w, h),
             log: msg => console.warn(msg),
             scheduleLayout: () => layoutTimer.restart(),
-            scheduleDecorations: () => root.scheduleDecorations(),
+            scheduleDecorations: (urgent) => root.scheduleDecorations(urgent),
             warpPointer: () => warpCall.call(),
             keyOwner: (code, callback) => root.keyOwner(code, callback),
             shortcutInfos: (callback) => root.shortcutInfos(callback),

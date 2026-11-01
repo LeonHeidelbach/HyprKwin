@@ -2,7 +2,7 @@
 import { assertEquals } from "./assert.js";
 
 const src = Deno.readTextFileSync(new URL("../package/contents/code/cuts.js", import.meta.url));
-const C = new Function(src + "\nreturn { subtractRects, visiblePieces };")();
+const C = new Function(src + "\nreturn { subtractRects, visiblePieces, crosses };")();
 
 const top = { x: 100, y: 50, width: 800, height: 4 };        // a border's top strip
 
@@ -35,6 +35,18 @@ Deno.test("several cuts, and one covering only part of the strip's thickness", (
         const covered = (gx >= 150 && gx < 250) || (gx >= 600 && gx < 650 && gy >= 52) || (gx >= 700 && gy < 51);
         assertEquals(hit, covered ? 0 : 1, `${x},${y}`);
     }
+});
+
+Deno.test("whether anything reaches over a strip at all", () => {
+    assertEquals(C.crosses(top, []), false);
+    assertEquals(C.crosses(top, [{ x: 0, y: 0, width: 100, height: 50 }]), false, "touching its corner is not over it");
+    assertEquals(C.crosses(top, [{ x: 0, y: 0, width: 101, height: 51 }]), true);
+});
+
+Deno.test("a cut that is not a rect is ignored, not taken as covering everything", () => {
+    assertEquals(C.visiblePieces(top, [{ x: NaN, y: 0, width: 10, height: 10 }, { x: 0, y: 0, width: 0, height: 99 }]),
+                 [{ x: 0, y: 0, width: 800, height: 4 }]);
+    assertEquals(C.crosses(top, [{ x: 120, y: NaN, width: 10, height: 10 }]), false);
 });
 
 Deno.test("all covered: nothing to draw", () => {

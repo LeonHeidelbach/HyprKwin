@@ -40,8 +40,12 @@ Item {
     readonly property int b: borderWidth
     // Corners can never take more than half the window.
     readonly property int r: Math.max(0, Math.min(radius, Math.floor(Math.min(outer.width, outer.height) / 2)))
+    // The corner pieces' size: the whole corner, as thick as the border
+    // where that is more than the radius (else a notch was left between
+    // them and the straight strips).
+    readonly property int m: r > 0 ? Math.max(b, r) : 0
 
-    // What is in front of the window (see bordersAbove in the driver):
+    // What is in front of the window (see rectsAbove in the driver):
     // menus, tooltips, windows stacked above, panels. Each strip leaves out
     // the part of itself they cover and draws the rest.
     readonly property var cuts: frame && frame.cuts ? frame.cuts : []
@@ -80,7 +84,7 @@ Item {
         radius: border.r
         thickness: border.b
         cuts: border.cuts
-        area: Qt.rect(border.outer.x + border.r, border.outer.y, border.outer.width - 2 * border.r, border.b)
+        area: Qt.rect(border.outer.x + border.m, border.outer.y, border.outer.width - 2 * border.m, border.b)
     }
     BorderStrip {
         id: bottom
@@ -95,7 +99,7 @@ Item {
         radius: border.r
         thickness: border.b
         cuts: border.cuts
-        area: Qt.rect(border.outer.x + border.r, border.outer.y + border.outer.height - border.b, border.outer.width - 2 * border.r, border.b)
+        area: Qt.rect(border.outer.x + border.m, border.outer.y + border.outer.height - border.b, border.outer.width - 2 * border.m, border.b)
     }
     BorderStrip {
         id: left
@@ -144,7 +148,7 @@ Item {
         cuts: border.cuts
         // Nothing to draw without rounded corners: kept still, so a
         // border that moves does not move these (hidden) windows as well.
-        area: border.r > 0 ? Qt.rect(border.outer.x, border.outer.y, border.r, border.r) : Qt.rect(0, 0, 0, 0)
+        area: border.r > 0 ? Qt.rect(border.outer.x, border.outer.y, border.m, border.m) : Qt.rect(0, 0, 0, 0)
     }
     BorderStrip {
         id: topRight
@@ -161,7 +165,7 @@ Item {
         cuts: border.cuts
         // Nothing to draw without rounded corners: kept still, so a
         // border that moves does not move these (hidden) windows as well.
-        area: border.r > 0 ? Qt.rect(border.outer.x + border.outer.width - border.r, border.outer.y, border.r, border.r) : Qt.rect(0, 0, 0, 0)
+        area: border.r > 0 ? Qt.rect(border.outer.x + border.outer.width - border.m, border.outer.y, border.m, border.m) : Qt.rect(0, 0, 0, 0)
     }
     BorderStrip {
         id: bottomLeft
@@ -178,7 +182,7 @@ Item {
         cuts: border.cuts
         // Nothing to draw without rounded corners: kept still, so a
         // border that moves does not move these (hidden) windows as well.
-        area: border.r > 0 ? Qt.rect(border.outer.x, border.outer.y + border.outer.height - border.r, border.r, border.r) : Qt.rect(0, 0, 0, 0)
+        area: border.r > 0 ? Qt.rect(border.outer.x, border.outer.y + border.outer.height - border.m, border.m, border.m) : Qt.rect(0, 0, 0, 0)
     }
     BorderStrip {
         id: bottomRight
@@ -195,6 +199,6 @@ Item {
         cuts: border.cuts
         // Nothing to draw without rounded corners: kept still, so a
         // border that moves does not move these (hidden) windows as well.
-        area: border.r > 0 ? Qt.rect(border.outer.x + border.outer.width - border.r, border.outer.y + border.outer.height - border.r, border.r, border.r) : Qt.rect(0, 0, 0, 0)
+        area: border.r > 0 ? Qt.rect(border.outer.x + border.outer.width - border.m, border.outer.y + border.outer.height - border.m, border.m, border.m) : Qt.rect(0, 0, 0, 0)
     }
 }
