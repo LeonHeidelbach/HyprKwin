@@ -25,6 +25,7 @@
   walk reordering it.
 - **Groups gather windows** (after bsptab): every window on the workspace
   into this group, or the next new window, or every new one until stopped.
+- **Receptacles** (bspwm's `node -i`): empty tiles the next windows fill.
 
 ### Fixed
 

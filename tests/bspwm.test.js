@@ -476,3 +476,60 @@ Deno.test("groupAll: every window shown in the space joins the focused window's 
     assertEquals(e.groupAll("b"), false, "nobody left to join");
 });
 
+// ---- receptacles ---------------------------------------------------------------------
+
+Deno.test("receptacle: an empty tile the next window fills", () => {
+    const e = eng();
+    open(e, ["a"]);
+    assertEquals(e.addReceptacle("a", "left"), true);
+    let l = e.layout(S);
+    assertEquals(l.windows.a, { x: 960, y: 0, width: 960, height: 1080 }, "it takes room");
+    assertEquals(l.receptacles.map((r) => r.rect), [{ x: 0, y: 0, width: 960, height: 1080 }]);
+    assertEquals(e.windows(S), ["a"]);
+    e.add("b", S);
+    assertEquals(e.dump(S), { dir: "h", ratio: 0.5, a: "b", b: "a" });
+    assertEquals(e.receptacleCount(S), 0);
+});
+
+Deno.test("receptacle: the newest is filled first; a preselection comes before them", () => {
+    const e = eng();
+    open(e, ["a"]);
+    e.addReceptacle("a", "right");
+    e.addReceptacle("a", "down");
+    e.preselect("a", "up");
+    e.add("b", S);
+    assertEquals(e.preselection("a"), null, "the preselection went first");
+    e.add("c", S);
+    e.add("d", S);
+    assertEquals(e.dump(S), { dir: "h", ratio: 0.5, a: { dir: "v", ratio: 0.5, a: { dir: "v", ratio: 0.5, a: "b", b: "a" }, b: "c" }, b: "d" });
+});
+
+Deno.test("receptacle: a window moves into one; they go on request and with the dwindle layout", () => {
+    const e = eng();
+    open(e, ["a", "b"]);
+    e.addReceptacle("a", "down");
+    assertEquals(e.moveToReceptacle("b", S), true);
+    assertEquals(e.dump(S), { dir: "v", ratio: 0.5, a: "a", b: "b" });
+    assertEquals(e.moveToReceptacle("b", S), false, "none left");
+    e.addReceptacle("a", "up");
+    e.addReceptacle("b", "right");
+    assertEquals(e.cycleWindow("a", 1), "b", "cycling skips them");
+    assertEquals(e.removeReceptacles(S), true);
+    assertEquals(e.dump(S), { dir: "v", ratio: 0.5, a: "a", b: "b" });
+    e.addReceptacle("a", "up");
+    e.setLayout(S, "master");
+    assertEquals(e.receptacleCount(S), 0, "master has no place for them");
+    assertEquals(e.addReceptacle("a", "up"), false);
+});
+
+Deno.test("receptacle: the last window closing leaves the empty tiles, which the next one fills", () => {
+    const e = eng();
+    open(e, ["a"]);
+    e.addReceptacle("a", "right");
+    e.remove("a");
+    assertEquals(e.spaces(), [S]);
+    assertEquals(e.windows(S), []);
+    e.add("b", S);
+    assertEquals(e.dump(S), "b");
+    assertEquals(e.layout(S).windows.b, AREA);
+});

@@ -180,6 +180,7 @@ Deno.test("the actions after bspwm are all there, and unbound", () => {
     names.push("toggleLocked", "togglePrivate");
     names.push("focusOlder", "focusNewer");
     names.push("groupAddAll", "groupAddNext", "groupAddNew", "groupStopAddNew");
+    names.push("receptacleLeft", "receptacleDown", "receptacleUp", "receptacleRight", "insertIntoReceptacle", "removeReceptacles");
     for (const a of names) {
         assert(byAction[a], a + " is registered");
         assertEquals(byAction[a].name, "HyprKwin " + a);

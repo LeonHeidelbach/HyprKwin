@@ -228,6 +228,7 @@ table below shows the US keys.
 | unbound | Lock a window against the close key (`toggleLocked`), keep new windows from splitting it (`togglePrivate`) |
 | unbound | Walk the focus history (`focusOlder`, `focusNewer`) |
 | unbound | Group every window with this one (`groupAddAll`), the next new window joins this group (`groupAddNext`), new windows join it until stopped (`groupAddNew`, `groupStopAddNew`) |
+| unbound | Empty tile beside the window (`receptacleLeft` / `Down` / `Up` / `Right`), move window into it (`insertIntoReceptacle`), remove them (`removeReceptacles`) |
 
 Mouse: hold Meta and drag with the left button to move a window (drop it on
 another tile to re-tile there, or on another monitor), or with the right

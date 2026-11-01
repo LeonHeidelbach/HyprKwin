@@ -4285,6 +4285,27 @@ def new_windows_join_a_group(sb):
     eq([len(b["tabs"]) for b in s["groupBars"]], [7], "everything in G's group")
     eq(s["active"], sb.window("G", s)["id"], "G still in front")
 
+
+@test
+def receptacles_wait_for_windows(sb):
+    sb.spawn("A")
+    sb.invoke("receptacleLeft")
+    s = sb.state()
+    eq(sb.geometry("A", s), RIGHT, "the empty tile takes the left half")
+    eq([rect_of(p) for p in s["presels"]], [LEFT], "and is shown")
+    sb.spawn("B")
+    s = sb.state()
+    eq(sb.geometry("B", s), LEFT, "B fills it")
+    eq(s["presels"], [], "nothing left to show")
+    sb.invoke("receptacleDown")              # under B
+    sb.invoke("focusRight")
+    sb.invoke("insertIntoReceptacle")        # A goes there
+    s = sb.state()
+    eq(sb.geometry("A", s)[0], 10, "A moved into it")
+    sb.invoke("receptacleRight")
+    sb.invoke("removeReceptacles")
+    eq(sb.state()["presels"], [], "removed")
+
 def main():
     words = [w for w in sys.argv[1:] if not w.startswith("-")]
     selected = [t for t in TESTS if not words or any(w in t.__name__ for w in words)]

@@ -134,6 +134,12 @@ function shortcutList() {
         ["rotateCounterClockwise", "Rotate the split around the window anticlockwise", ""],
         ["flipHorizontal", "Flip the split around the window top to bottom", ""],
         ["flipVertical", "Flip the split around the window left to right", ""],
+        ["receptacleLeft", "Empty tile left of the window (receptacle)", ""],
+        ["receptacleDown", "Empty tile below the window (receptacle)", ""],
+        ["receptacleUp", "Empty tile above the window (receptacle)", ""],
+        ["receptacleRight", "Empty tile right of the window (receptacle)", ""],
+        ["insertIntoReceptacle", "Move window into the newest empty tile", ""],
+        ["removeReceptacles", "Remove the workspace's empty tiles", ""],
 
         ["Other"],
         ["showKeys", "Show keyboard shortcuts", "Meta+K"],

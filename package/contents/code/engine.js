@@ -150,7 +150,8 @@ function createEngine(userConfig) {
                          // without being recorded in focusOrder
     var flags = {};      // window id -> {marked: seq or 0, locked, private}
     var flagSeq = 0;     // marked windows are numbered, so the newest is known
-    var preselSeq = 0;   // preselections are numbered, so the newest is known
+    var preselSeq = 0;   // preselections and receptacles are numbered, so the
+                         // newest is known
     var isVisible = function () { return true; };
     var nextNodeId = 1;
     var api = null;      // the engine's interface, filled in below (declared
@@ -158,7 +159,7 @@ function createEngine(userConfig) {
 
     function newLeaf(ids) {
         return { id: nextNodeId++, leaf: true, wins: ids.slice(), active: 0, grouped: false, parent: null, rect: null,
-                 presel: null };
+                 presel: null, receptacle: false };
     }
 
     function newSplit(dir, ratio) {
@@ -488,6 +489,7 @@ function createEngine(userConfig) {
     // the tree but give their space to their sibling.
     function shown(node) {
         if (!node) return false;
+        if (node.receptacle) return true;      // an empty tile keeps its place
         if (node.leaf) return node.wins.some(function (w) { return isVisible(w); });
         return shown(node.a) || shown(node.b);
     }
@@ -517,7 +519,7 @@ function createEngine(userConfig) {
     }
 
     function pickTargetLeaf(space, exclude) {
-        var ls = leaves(roots[space]);
+        var ls = leaves(roots[space]).filter(function (l) { return !l.receptacle; });
         var usable = function (id) { return id !== exclude && spaceOf[id] === space && leafOf[id] && isVisible(id); };
         if (activeId && usable(activeId)) return leafOf[activeId];
         for (var i = 0; i < focusOrder.length; i++) {
@@ -531,10 +533,15 @@ function createEngine(userConfig) {
     // Insert `id` into `space`. opts: {target: window id, cursor: {x,y},
     // side: "left"|"right"|"up"|"down" (forces placement relative to target),
     // leaf: the tile to split instead of the target,
+    // receptacle: an empty tile it fills,
     // presel: a tile whose preselection this window takes (and uses up)}
     function insert(id, space, opts) {
         opts = opts || {};
         spaceOf[id] = space;
+        if (opts.receptacle && opts.receptacle.receptacle) {
+            fillReceptacle(opts.receptacle, id);
+            return;
+        }
         var root = roots[space];
         if (!root) {
             var l = newLeaf([id]);
@@ -553,6 +560,11 @@ function createEngine(userConfig) {
         }
         if (!target && opts.target && leafOf[opts.target] && spaceOf[opts.target] === space) target = leafOf[opts.target];
         if (!target) target = pickTargetLeaf(space, id);
+        if (!target) {
+            // Nothing but empty tiles: the window fills one.
+            fillReceptacle(newestReceptacle(space), id);
+            return;
+        }
         computeRects(space);
 
         var dir, first;
@@ -664,6 +676,7 @@ function createEngine(userConfig) {
     // way, instead of the automatic way, and takes the preselected side. Its
     // ratio is the first (left or top) side's share, as bspwm's split_ratio
     // is; until one is set it is the default split.
+    // A receptacle (node -i) is an empty tile that the next window fills.
     // Flags (bspwm's marked, locked and private) belong to the window,
     // whatever tile it is in.
 
@@ -699,12 +712,35 @@ function createEngine(userConfig) {
         computeRects(space);
         var auto = null, manual = null, autoArea = 0, manualArea = 0;
         leaves(roots[space]).forEach(function (l) {
-            if (!l.rect || !shown(l)) return;
+            if (l.receptacle || !l.rect || !shown(l)) return;
             var area = l.rect.width * l.rect.height, priv = isPrivateLeaf(l);
             if (area > manualArea && (l.presel || !priv)) { manual = l; manualArea = area; }
             if (area > autoArea && !l.presel && !priv) { auto = l; autoArea = area; }
         });
         return auto || manual;
+    }
+
+    function receptaclesOf(space) {
+        return leaves(roots[space]).filter(function (l) { return l.receptacle; });
+    }
+
+    function newestReceptacle(space) {
+        var best = null;
+        receptaclesOf(space).forEach(function (l) { if (!best || l.seq > best.seq) best = l; });
+        return best;
+    }
+
+    function fillReceptacle(leaf, id) {
+        leaf.receptacle = false;
+        leaf.wins = [id];
+        leaf.active = 0;
+        leafOf[id] = leaf;
+    }
+
+    function dropReceptacles(space) {
+        var gone = receptaclesOf(space);
+        gone.forEach(function (l) { removeLeaf(l, space); });
+        return gone.length > 0;
     }
 
     // The tile with the newest preselection in a space, leaving out the
@@ -726,14 +762,19 @@ function createEngine(userConfig) {
 
     // Where a window coming into a dwindle space goes when nothing says
     // where: the focused tile's preselection if it has one, as in bspwm,
-    // else the automatic split, which never splits a private window while
-    // there is another to split.
+    // else the newest receptacle, else the automatic split, which never
+    // splits a private window while there is another to split.
     function placement(id, space, opts) {
         if (!roots[space] || modeOf(space) !== "dwindle" || (opts && (opts.side || opts.target))) return opts;
         var out = copyOpts(opts);
         var focus = pickTargetLeaf(space, id);
         if (focus && focus.presel) {
             out.presel = focus;
+            return out;
+        }
+        var r = newestReceptacle(space);
+        if (r) {
+            out.receptacle = r;
             return out;
         }
         if (focus && isPrivateLeaf(focus)) {
@@ -744,6 +785,12 @@ function createEngine(userConfig) {
             }
         }
         return out;
+    }
+
+    // The windows of the tiles in a space that are shown, in layout order,
+    // without its empty tiles.
+    function tilesOf(space) {
+        return leaves(roots[space] || null).filter(function (l) { return !l.receptacle && shown(l); });
     }
 
     api = {
@@ -937,7 +984,10 @@ function createEngine(userConfig) {
             var n = 0;
             Object.keys(saved).forEach(function (space) {
                 var o = saved[space] || {};
-                if (LAYOUTS.indexOf(o.layout) >= 0) modes[space] = o.layout;
+                if (LAYOUTS.indexOf(o.layout) >= 0) {
+                    modes[space] = o.layout;
+                    if (o.layout !== "dwindle") dropReceptacles(space);
+                }
                 if (typeof o.factor === "number" || typeof o.count === "number" || o.orientation) {
                     var p = masterOf(space);
                     if (typeof o.factor === "number" && isFinite(o.factor)) p.factor = clamp(o.factor, MIN_SHARE, 1 - MIN_SHARE);
@@ -981,7 +1031,7 @@ function createEngine(userConfig) {
         layout: function (space, area) {
             if (area) areas[space] = area;
             var result = { windows: {}, groups: [], hidden: [], offscreen: [], strip: [], stripSets: [], stage: [],
-                           waiting: {}, stripArea: null, presels: [] };
+                           waiting: {}, stripArea: null, presels: [], receptacles: [] };
             var root = roots[space];
             if (!root) return result;
             area = areas[space];
@@ -1014,6 +1064,10 @@ function createEngine(userConfig) {
             var dwindle = modeOf(space) === "dwindle";
             all.forEach(function (leaf) {
                 var r = leaf.rect;
+                if (leaf.receptacle) {
+                    if (r && dwindle) result.receptacles.push({ id: "receptacle-" + leaf.id, seq: leaf.seq, rect: gappedFull(r) });
+                    return;
+                }
                 if (r && leaf.presel && dwindle) {
                     result.presels.push({ id: leaf.wins[leaf.active], dir: leaf.presel.dir, ratio: preselShare(leaf.presel),
                                           seq: leaf.presel.seq, rect: gappedFull(preselPart(r, leaf.presel)) });
@@ -1172,6 +1226,7 @@ function createEngine(userConfig) {
             var ws = api.windows(from);
             var active = api.lastFocused(from);
             // Keep groups intact by moving whole leaves.
+            dropReceptacles(from);
             leaves(roots[from] || null).forEach(function (leaf) {
                 var first = leaf.wins[0];
                 var grouped = leaf.grouped, rest = leaf.wins.slice(1), act = leaf.active, presel = leaf.presel;
@@ -1291,6 +1346,40 @@ function createEngine(userConfig) {
             insert(id, space, { presel: target });
             return true;
         },
+
+        // An empty tile beside the window, on that side (bspwm node -p, then
+        // node -i). The next window to come into the space fills it.
+        addReceptacle: function (id, side) {
+            var target = leafOf[id];
+            var space = spaceOf[id];
+            if (!target || SIDES.indexOf(side) < 0 || modeOf(space) !== "dwindle") return false;
+            computeRects(space);
+            var r = newLeaf([]);
+            r.receptacle = true;
+            r.seq = ++preselSeq;
+            var split = newSplit(side === "left" || side === "right" ? "h" : "v", defaultShare());
+            replaceChild(target.parent, target, split, space);
+            if (zooms[space] === target) zooms[space] = split;
+            if (side === "left" || side === "up") { split.a = r; split.b = target; }
+            else { split.a = target; split.b = r; }
+            r.parent = split;
+            target.parent = split;
+            return true;
+        },
+
+        // Fill the newest receptacle of the window's space with it.
+        moveToReceptacle: function (id, space) {
+            var r = space ? newestReceptacle(space) : null;
+            if (!r || modeOf(space) !== "dwindle") return false;
+            if (leafOf[id]) detach(id);
+            spaceOf[id] = space;
+            fillReceptacle(r, id);
+            return true;
+        },
+
+        removeReceptacles: function (space) { return dropReceptacles(space); },
+
+        receptacleCount: function (space) { return receptaclesOf(space).length; },
 
         // Give every split in the space the share that leaves each window the
         // same area (bspwm node @/ -B): the first side gets as many parts as
@@ -1515,15 +1604,18 @@ function createEngine(userConfig) {
 
         layoutOf: function (space) { return modeOf(space); },
 
+        // Empty tiles only mean something to dwindle, and go when it does.
         setLayout: function (space, mode) {
             if (LAYOUTS.indexOf(mode) < 0 || modeOf(space) === mode) return false;
             modes[space] = mode;
+            if (mode !== "dwindle") dropReceptacles(space);
             return true;
         },
 
         cycleLayout: function (space, delta) {
             var i = LAYOUTS.indexOf(modeOf(space));
             modes[space] = LAYOUTS[((i + (delta || 1)) % LAYOUTS.length + LAYOUTS.length) % LAYOUTS.length];
+            if (modes[space] !== "dwindle") dropReceptacles(space);
             return modes[space];
         },
 
@@ -1537,20 +1629,20 @@ function createEngine(userConfig) {
         swapWithMaster: function (id) {
             var leaf = leafOf[id];
             if (!leaf) return false;
-            var all = leaves(roots[spaceOf[id]] || null).filter(shown);
+            var all = tilesOf(spaceOf[id]);
             if (all.length < 2 || all[0] === leaf) return false;
             return api.swap(id, all[0].wins[all[0].active]);
         },
 
         // The window of the first master leaf (layoutmsg focusmaster).
         firstMaster: function (space) {
-            var all = leaves(roots[space] || null).filter(shown);
+            var all = tilesOf(space);
             return all.length ? all[0].wins[all[0].active] : null;
         },
 
         setMasterCount: function (space, delta) {
             var p = masterOf(space);
-            var all = leaves(roots[space] || null).filter(shown);
+            var all = tilesOf(space);
             var before = p.count;
             p.count = clamp(Math.round(p.count + delta), 1, Math.max(1, all.length));
             return p.count !== before;
@@ -1601,7 +1693,7 @@ function createEngine(userConfig) {
         cycleWindow: function (id, delta) {
             var space = spaceOf[id];
             if (!leafOf[id]) return null;
-            var all = leaves(roots[space] || null).filter(shown);
+            var all = tilesOf(space);
             if (all.length < 2) return null;
             var i = all.indexOf(leafOf[id]);
             var next = all[((i + (delta || 1)) % all.length + all.length) % all.length];

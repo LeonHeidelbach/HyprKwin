@@ -292,6 +292,15 @@ next window opened on the workspace join the focused window's group, once;
 `groupAddNew` does so for every new window until `groupStopAddNew`. The
 group is made when the first window joins.
 
+**Receptacles** (`node -i`). `receptacleLeft`, `…Down`, `…Up` and `…Right`
+make an empty tile on that side of the focused window, shown as a
+preselection is. The next window to come into the workspace fills the newest
+one (after the focused window's preselection, if it has one), and
+`insertIntoReceptacle` moves the focused window into it. `removeReceptacles`
+removes the workspace's empty tiles; so does leaving the dwindle layout.
+When the last window on a workspace closes, its empty tiles stay for the
+next ones.
+
 ### Scratchpads
 
 `Meta+S` shows and hides the scratchpad, and `Meta+Alt+S` puts the focused

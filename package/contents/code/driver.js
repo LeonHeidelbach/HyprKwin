@@ -1689,6 +1689,7 @@ function createDriver(env) {
             if (!vs.visible) return;
             if (specialShown() && vs.space !== specialSpace(special.name)) return;
             L.presels.forEach(function (p) { feedback.push({ id: "presel-" + p.id, owner: p.id, rect: p.rect }); });
+            L.receptacles.forEach(function (r) { feedback.push({ id: r.id, owner: null, rect: r.rect }); });
             L.groups.forEach(function (g) {
                 if (!usableRect(g.rect)) {
                     log("skipping group bar", JSON.stringify(g.rect));
@@ -3631,6 +3632,22 @@ function createDriver(env) {
             }
             if (any) announce("New windows tile as usual");
         },
+        receptacleLeft: function () { receptacle("left"); },
+        receptacleRight: function () { receptacle("right"); },
+        receptacleUp: function () { receptacle("up"); },
+        receptacleDown: function () { receptacle("down"); },
+        insertIntoReceptacle: function () {
+            var st = active();
+            if (!st || !isTiled(st)) return;
+            var space = engine.spaceOf(st.id);
+            if (!dwindleOnly(space, "Receptacles") || !engine.moveToReceptacle(st.id, space)) return;
+            syncDesktop(st);
+            relayout();
+        },
+        removeReceptacles: function () {
+            var space = currentSpace();
+            if (space && engine.removeReceptacles(space)) relayout();
+        },
     };
     for (var r = 1; r <= 9; r++) {
         (function (n) {
@@ -3720,6 +3737,14 @@ function createDriver(env) {
         if (!st || !isTiled(st)) return;
         groupAuto[st.id] = { once: once, at: Date.now() };
         announce(once ? "The next window joins this group" : "New windows join this group");
+    }
+
+    // bspwm's node -p, then node -i: an empty tile beside the focused window,
+    // which the next window to come into the workspace fills.
+    function receptacle(dir) {
+        var st = active();
+        if (!st || !isTiled(st) || !dwindleOnly(engine.spaceOf(st.id), "Receptacles")) return;
+        if (engine.addReceptacle(st.id, dir)) relayout();
     }
 
     function intoGroup(dir) {
@@ -4052,6 +4077,7 @@ function createDriver(env) {
                         var p = engine.masterParams(space);
                         out[space] = { layout: engine.layoutOf(space), factor: Math.round(p.factor * 1000) / 1000,
                                        masters: p.count, orientation: p.orientation, zoom: engine.zoomInfo(space),
+                                       receptacles: engine.receptacleCount(space),
                                        presels: engine.preselections(space).map(function (q) { return q.id; }) };
                     });
                     return out;
